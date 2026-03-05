@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+  CUSTOMER
+}
+
+enum BookingStatus {
+  PENDING
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+enum PaymentMethod {
+  CASH
+  GCASH
+}
+
+
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  fullName  String
+  role      Role     @default(CUSTOMER)
+
+  active    Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+
+  bookings         Booking[]      @relation("CustomerBookings")
+  assignedBookings Booking[]      @relation("StaffBookings")
+  notifications    Notification[]
+
+  @@index([role])
+  @@index([active])
+}
+
+
+
+model Service {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  price       Int
+  durationMin Int
+  active      Boolean @default(true)
+
+  items BookingItem[]
+
+  @@index([active])
+}
+
+
+
+model Booking {
+  id              Int           @id @default(autoincrement())
+
+  customerId      String
+  assignedStaffId String?
+
+  status          BookingStatus @default(PENDING)
+
+  totalAmount     Int           @default(0)
+  amountPaid      Int           @default(0)
+  paymentStatus   PaymentStatus @default(UNPAID)
+
+  appointmentStart DateTime
+  appointmentEnd   DateTime
+
+  createdAt       DateTime @default(now())
+
+  customer      User  @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  assignedStaff User? @relation("StaffBookings", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+
+  items    BookingItem[]
+  payments Payment[]
+
+  @@index([customerId])
+  @@index([assignedStaffId])
+  @@index([status])
+  @@index([appointmentStart])
+  @@index([createdAt])
+}
+
+
+
+model BookingItem {
+  id        Int @id @default(autoincrement())
+
+  bookingId Int
+  serviceId Int
+
+  price     Int
+  quantity  Int @default(1)
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId])
+  @@index([serviceId])
+}
+
+
+
+model Payment {
+  id        Int           @id @default(autoincrement())
+
+  bookingId Int
+  amount    Int
+  method    PaymentMethod @default(CASH)
+
+  createdAt DateTime      @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([createdAt])
+}
+
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+
+  userId    String
+  title     String
+  message   String
+
+  type      String   @default("GENERAL")
+  isRead    Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model BusinessSettings {
+  id Int @id @default(1)
+
+  openingHour Int @default(8)
+  closingHour Int @default(18)
+
+  slotDurationMinutes Int @default(60)
+
+  maxBookingsPerSlot Int @default(3)
+
+  createdAt DateTime @default(now())
+}
