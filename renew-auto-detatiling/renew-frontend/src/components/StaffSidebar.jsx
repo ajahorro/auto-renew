@@ -1,0 +1,150 @@
+import { useNavigate } from "react-router-dom";
+import { useContext, useEffect, useState } from "react";
+import { AuthContext } from "../context/AuthContext";
+import { confirmAction } from "./ConfirmModal";
+import API from "../api/axios";
+
+const StaffSidebar = ({ active }) => {
+
+  const navigate = useNavigate();
+  const { logout: contextLogout } = useContext(AuthContext);
+  const [notifCount, setNotifCount] = useState(0);
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await API.get("/notifications");
+      const list = Array.isArray(res.data) ? res.data : res.data.notifications || [];
+      setNotifCount(list.filter(n => !n.isRead).length);
+    } catch (err) { }
+  };
+
+  const logout = async () => {
+    const confirmed = await confirmAction({
+      title: "Log Out",
+      message: "Are you sure you want to log out?",
+      confirmText: "Yes, Log Out",
+      cancelText: "Cancel",
+      type: "danger"
+    });
+    
+    if (!confirmed) return;
+    
+    contextLogout();
+    navigate("/login");
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 5000);
+    const handleUpdate = () => fetchNotifications();
+    window.addEventListener("notifUpdated", handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("notifUpdated", handleUpdate);
+    };
+  }, []);
+
+  const NavItem = ({ label, route, name }) => {
+    const isActive = active === name;
+    return (
+      <div
+        onClick={() => route && navigate(route)}
+        style={{
+          padding: "12px 16px",
+          borderRadius: "8px",
+          marginBottom: "8px",
+          cursor: "pointer",
+          transition: "0.2s all ease",
+          position: "relative",
+          background: isActive ? "var(--bg-tertiary)" : "transparent",
+          color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+          fontWeight: isActive ? "600" : "400",
+          borderLeft: isActive ? "4px solid var(--accent-yellow)" : "4px solid transparent"
+        }}
+      >
+        {label}
+        {name === "notifications" && notifCount > 0 && (
+          <span style={{
+            position: "absolute",
+            right: "16px",
+            top: "50%",
+            transform: "translateY(-50%)",
+            background: "var(--accent-red)",
+            color: "#fff",
+            borderRadius: "10px",
+            padding: "2px 8px",
+            fontSize: "10px",
+            fontWeight: "bold"
+          }}>{notifCount}</span>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{
+      width: "260px",
+      height: "100vh",
+      position: "fixed",
+      left: 0,
+      top: 0,
+      background: "var(--sidebar-bg)",
+      padding: "24px",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      borderRight: "1px solid var(--border-color)",
+      fontFamily: "Poppins, sans-serif",
+      zIndex: 100
+    }}>
+      <div>
+        <div style={{
+          fontSize: "24px",
+          fontWeight: "800",
+          color: "var(--accent-yellow)",
+          marginBottom: "40px",
+          paddingLeft: "16px"
+        }}>STAFF</div>
+        <div style={{ flex: 1 }}>
+          <NavItem label="Dashboard" route="/staff" name="dashboard" />
+          <NavItem label="My Tasks" route="/staff/tasks" name="tasks" />
+          <NavItem label="Notifications" route="/staff/notifications" name="notifications" />
+        </div>
+      </div>
+
+      <div>
+        <div
+          onClick={() => navigate("/staff/settings")}
+          style={{
+            padding: "12px 16px",
+            borderRadius: "8px",
+            cursor: "pointer",
+            marginBottom: "8px",
+            background: active === "settings" ? "var(--bg-tertiary)" : "transparent",
+            color: active === "settings" ? "var(--text-primary)" : "var(--text-secondary)",
+            fontWeight: active === "settings" ? "600" : "400"
+          }}
+        >
+          Settings
+        </div>
+        <div 
+          onClick={logout} 
+          style={{
+            padding: "12px",
+            borderRadius: "8px",
+            background: "var(--accent-red)",
+            color: "#fff",
+            textAlign: "center",
+            fontWeight: "600",
+            cursor: "pointer",
+            marginTop: "10px"
+          }}
+        >
+          Log Out
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default StaffSidebar;

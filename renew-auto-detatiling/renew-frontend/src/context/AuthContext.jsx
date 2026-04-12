@@ -1,24 +1,73 @@
-import { createContext, useState } from "react";
+import { createContext, useState, useEffect, useContext } from "react";
 
 export const AuthContext = createContext();
 
+// ✅ This is what your AdminDashboard was missing
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+};
+
 export const AuthProvider = ({ children }) => {
-
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const login = (data) => {
-    localStorage.setItem("token", data.token);
-    setUser(data.user);
+  useEffect(() => {
+    const loadAuth = () => {
+      try {
+        const storedUser = localStorage.getItem("user");
+        const token = localStorage.getItem("token");
+
+        if (storedUser && token) {
+          const parsedUser = JSON.parse(storedUser);
+          setUser({
+            ...parsedUser,
+            role: String(parsedUser.role).toUpperCase()
+          });
+        }
+      } catch (err) {
+        console.error("Auth load error:", err);
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadAuth();
+  }, []);
+
+  const login = (token, userData) => {
+    if (!token || !userData) return;
+
+    // Clean start
+    localStorage.clear(); 
+
+    const normalizedUser = {
+      id: userData.id,
+      email: userData.email,
+      fullName: userData.fullName || userData.name,
+      phone: userData.phone || "",
+      role: String(userData.role).toUpperCase()
+    };
+
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(normalizedUser));
+    
+    setUser(normalizedUser);
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
+    localStorage.clear();
     setUser(null);
+    window.location.href = "/login"; // Force a clean state
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
-      {children}
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 };

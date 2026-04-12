@@ -7,15 +7,16 @@ async function main() {
 
   const password = await bcrypt.hash("customer123", 10);
 
-  await prisma.user.create({
-    data: {
-      email: "customer@renew.com",
-      password: password,
-      fullName: "Test Customer",
-      role: "CUSTOMER"
-    }
-  });
-
+  await prisma.user.upsert({
+  where: { email: "customer@renew.com" },
+  update: {},
+  create: {
+    email: "customer@renew.com",
+    password,
+    fullName: "Test Customer",
+    role: "CUSTOMER"
+  }
+});
   console.log("Customer account created.");
 }
 

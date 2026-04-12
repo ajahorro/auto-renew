@@ -3,75 +3,88 @@ const router = express.Router();
 
 const authenticate = require("../middleware/auth.middleware");
 const authorize = require("../middleware/rbac.middleware");
-const bookingsController = require("../controllers/bookings.controller");
 
+const {
+  createBooking,
+  getBookings,
+  getBookingById,
+  cancelBooking,
+  assignStaff,
+  updateBookingStatus,
+  recordPayment,
+  requestDownpayment,
+  addServiceToBooking,
+  getDailySchedule,
+  createAddonRequest,
+  getAddonRequests,
+  approveAddonRequest,
+  rejectAddonRequest,
+  addPayment,
+  getAvailability,
+  getAdminAnalytics,
+  updateBooking,
+  confirmDownpayment,
+  requestCancelBooking
+} = require("../controllers/bookings.controller");
 
-// CUSTOMER creates booking
-router.post(
-  "/",
-  authenticate,
-  authorize("CUSTOMER"),
-  bookingsController.createBooking
-);
+/* CREATE BOOKING */
+router.post("/", authenticate, createBooking);
 
+/* GET BOOKINGS */
+router.get("/", authenticate, getBookings);
 
-// Logged-in users view bookings (filtered by role in controller)
-router.get(
-  "/",
-  authenticate,
-  bookingsController.getBookings
-);
+/* UPDATE BOOKING (CUSTOMER) */
+router.patch("/update/:id", authenticate, authorize("CUSTOMER"), updateBooking);
+router.patch("/:id", authenticate, authorize("CUSTOMER"), updateBooking);
 
+/* AVAILABILITY */
+router.get("/availability", getAvailability);
 
-// Get booking details
-router.get(
-  "/:id",
-  authenticate,
-  bookingsController.getBookingById
-);
+/* ADMIN ANALYTICS */
+router.get("/admin-analytics", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAdminAnalytics);
 
+/* ADMIN DAILY SCHEDULE */
+router.get("/schedule", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getDailySchedule);
 
-// Assign staff (ADMIN + SUPER_ADMIN)
-router.patch(
-  "/:id/assign",
-  authenticate,
-  authorize("ADMIN", "SUPER_ADMIN"),
-  bookingsController.assignStaff
-);
+/* ADD PAYMENT */
+router.post("/add-payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addPayment);
+router.post("/:id/confirm-downpayment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), confirmDownpayment);
 
+/* REQUEST DOWNPAYMENT */
+router.post("/request-downpayment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), requestDownpayment);
+router.post("/:id/request-downpayment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), requestDownpayment);
 
-// Update booking status
-router.patch(
-  "/:id/status",
-  authenticate,
-  authorize("ADMIN", "SUPER_ADMIN", "STAFF"),
-  bookingsController.updateBookingStatus
-);
+/* ADD SERVICE TO BOOKING */
+router.post("/add-service/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addServiceToBooking);
+router.post("/:id/add-service", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addServiceToBooking);
 
+/* ASSIGN STAFF */
+router.patch("/assign/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
+router.patch("/:id/assign", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
 
-// Record payment
-router.patch(
-  "/:id/payment",
-  authenticate,
-  authorize("ADMIN", "SUPER_ADMIN", "STAFF"),
-  bookingsController.recordPayment
-);
+/* UPDATE STATUS */
+router.patch("/status/:id", authenticate, updateBookingStatus);
+router.patch("/:id/status", authenticate, updateBookingStatus);
 
+/* RECORD PAYMENT */
+router.patch("/payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), recordPayment);
+router.patch("/:id/payment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), recordPayment);
 
-// Cancel booking
-router.patch(
-  "/:id/cancel",
-  authenticate,
-  authorize("CUSTOMER", "ADMIN", "SUPER_ADMIN"),
-  bookingsController.cancelBooking
-);
+/* CANCEL BOOKING */
+router.patch("/cancel/:id", authenticate, cancelBooking);
 
+/* STAFF REQUEST CANCEL */
+router.post("/:id/request-cancel", authenticate, authorize("STAFF"), requestCancelBooking);
 
-// Availability
-router.get(
-  "/availability",
-  authenticate,
-  bookingsController.getAvailability
-);
+/* ================= ADDON REQUESTS ================= */
+
+router.post("/:bookingId/addon-request", authenticate, authorize("CUSTOMER"), createAddonRequest);
+router.get("/:bookingId/addon-requests", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAddonRequests);
+router.patch("/addon-requests/:id/approve", authenticate, authorize("ADMIN", "SUPER_ADMIN"), approveAddonRequest);
+router.patch("/addon-requests/:id/reject", authenticate, authorize("ADMIN", "SUPER_ADMIN"), rejectAddonRequest);
+
+/* ================= LAST ================= */
+
+router.get("/:id", authenticate, getBookingById);
 
 module.exports = router;
