@@ -152,12 +152,12 @@ const AdminBookings = () => {
 
   // This logic is excellent - keep it as is!
   const canUpdate = (currentStatus, action) => {
-    if (currentStatus === "CANCELLED" || currentStatus === "COMPLETED") {
+    if (currentStatus === "cancelled" || currentStatus === "completed") {
       return false;
     }
-    if (action === "SCHEDULED") return currentStatus === "PENDING";
-    if (action === "COMPLETED") return currentStatus === "ONGOING";
-    if (action === "CANCELLED") return currentStatus === "PENDING" || currentStatus === "SCHEDULED";
+    if (action === "scheduled") return currentStatus === "pending";
+    if (action === "completed") return currentStatus === "ongoing";
+    if (action === "cancelled") return currentStatus === "pending" || currentStatus === "scheduled";
     return false;
   };
 
@@ -257,11 +257,11 @@ const AdminBookings = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "PENDING": return "#facc15";
-      case "SCHEDULED": return "#3b82f6";
-      case "ONGOING": return "#a855f7";
-      case "COMPLETED": return "#22c55e";
-      case "CANCELLED": return "#ef4444";
+      case "pending": return "#facc15";
+      case "scheduled": return "#3b82f6";
+      case "ongoing": return "#a855f7";
+      case "completed": return "#22c55e";
+      case "cancelled": return "#ef4444";
       default: return "#64748b";
     }
   };
@@ -309,11 +309,11 @@ return (
             onChange={(e) => handleStatusChange(e.target.value)}
           >
             <option value="">All Status</option>
-            <option value="PENDING">Pending</option>
-            <option value="SCHEDULED">Scheduled</option>
-            <option value="ONGOING">Ongoing</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="CANCELLED">Cancelled</option>
+            <option value="pending">Pending</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="ongoing">Ongoing</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
 
@@ -326,6 +326,7 @@ return (
                 <th style={styles.th}>Total</th>
                 <th style={styles.th}>Status</th>
                 <th style={styles.th}>Payment</th>
+                <th style={styles.th}>Method</th>
                 <th style={styles.th}>Appointment</th>
                 <th style={styles.th}>Vehicle</th>
                 <th style={styles.th}>Actions</th>
@@ -351,6 +352,13 @@ return (
                     <td style={styles.td}>
                       <span style={{ ...styles.statusBadge, background: getPaymentColor(b.paymentStatus) }}>
                         {b.paymentStatus}
+                      </span>
+                    </td>
+
+                    {/* PAYMENT METHOD */}
+                    <td style={styles.td}>
+                      <span style={{ ...styles.statusBadge, background: b.paymentMethod === "GCASH" ? "#8b5cf6" : "#64748b" }}>
+                        {b.paymentMethod || "—"}
                       </span>
                     </td>
 
@@ -382,7 +390,7 @@ return (
                 ))
               ) : (
                 <tr>
-                  <td colSpan="8" style={{ ...styles.td, textAlign: 'center', opacity: 0.5 }}>
+                  <td colSpan="9" style={{ ...styles.td, textAlign: 'center', opacity: 0.5 }}>
                     No bookings found matching your search.
                   </td>
                 </tr>

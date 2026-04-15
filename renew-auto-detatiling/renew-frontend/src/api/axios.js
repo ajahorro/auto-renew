@@ -25,7 +25,8 @@ API.interceptors.response.use(
     // Operations (status updates, assign staff) will handle their own errors
     const isOperationError = error.config?.url?.includes('/status') || 
                              error.config?.url?.includes('/cancel') ||
-                             error.config?.url?.includes('/assign');
+                             error.config?.url?.includes('/assign') ||
+                             error.config?.url?.includes('/availability');
     
     if (!isOperationError) {
       const message =

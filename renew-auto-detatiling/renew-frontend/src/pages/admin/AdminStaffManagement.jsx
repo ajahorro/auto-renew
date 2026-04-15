@@ -160,10 +160,10 @@ const AdminStaffManagement = () => {
                     </div>
 
                     <button
-                      style={s.active ? styles.deactivateBtn : styles.activateBtn}
-                      onClick={() => toggleStatus(s.id, s.active)}
+                      style={s.isActive ? styles.deactivateBtn : styles.activateBtn}
+                      onClick={() => toggleStatus(s.id, s.isActive)}
                     >
-                      {s.active ? "Deactivate" : "Activate"}
+                      {s.isActive ? "Deactivate" : "Activate"}
                     </button>
                   </div>
                 ))

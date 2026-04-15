@@ -1,8 +1,43 @@
 const { PrismaClient } = require("@prisma/client");
+const bcrypt = require("bcryptjs");
 
 const prisma = new PrismaClient();
 
 async function main() {
+
+  console.log("Seeding users...");
+
+  const users = [
+    // Admin
+    { email: "admin@renew", password: "admin123", fullName: "Admin User", role: "ADMIN" },
+    // Staff
+    { email: "staff1@renew", password: "staff123", fullName: "Juan Dela Cruz", role: "STAFF" },
+    { email: "staff2@renew", password: "staff123", fullName: "Maria Santos", role: "STAFF" },
+    { email: "staff3@renew", password: "staff123", fullName: "Pedro Garcia", role: "STAFF" },
+    // Customers
+    { email: "customer1@renew", password: "customer123", fullName: "John Smith", role: "CUSTOMER" },
+    { email: "customer2@renew", password: "customer123", fullName: "Jane Doe", role: "CUSTOMER" },
+  ];
+
+  for (const userData of users) {
+    const existing = await prisma.user.findUnique({ where: { email: userData.email } });
+    if (!existing) {
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      await prisma.user.create({
+        data: {
+          email: userData.email,
+          password: hashedPassword,
+          fullName: userData.fullName,
+          role: userData.role,
+          isActive: true,
+          emailVerified: true
+        }
+      });
+      console.log(`Created: ${userData.role} - ${userData.email} / ${userData.password}`);
+    } else {
+      console.log(`Exists: ${userData.role} - ${userData.email}`);
+    }
+  }
 
   console.log("Seeding services...");
 
@@ -97,7 +132,7 @@ async function main() {
         category: service.category,
         price: service.price,
         durationMin: service.durationMin,
-        active: true
+        isActive: true
       }
     });
 

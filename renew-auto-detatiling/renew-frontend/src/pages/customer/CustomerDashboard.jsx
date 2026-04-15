@@ -9,7 +9,7 @@ import "../../App.css";
 const CustomerDashboard = () => {
 
   const canCancel = (status) => {
-    return status === "PENDING" || status === "SCHEDULED";
+    return status === "pending" || status === "scheduled";
   };
 
   const navigate = useNavigate();
@@ -88,11 +88,11 @@ try {
     }
 
     const filtered = bookings.filter(
-      b => b.status !== "CANCELLED"
+      b => b.status !== "cancelled"
     );
 
     const activeBooking =
-      filtered.find(b => b.status !== "COMPLETED")
+      filtered.find(b => b.status !== "completed")
       || filtered[0];
 
     if (activeBooking) {
@@ -140,7 +140,7 @@ try {
     }
 
     const completedBookings = bookings
-      .filter(b => b.status === "COMPLETED")
+      .filter(b => b.status === "completed")
       .slice(0,2);
 
     setHistory(completedBookings);
@@ -312,7 +312,7 @@ const fetchBookings = async () => {
   }
 
 };
-  const isCancelled = booking.status === "CANCELLED";
+  const isCancelled = booking.status === "cancelled";
 
 return (
 
@@ -413,7 +413,7 @@ return (
                       </div>
 
                       <div>
-                        <span style={{opacity:"0.6"}}>Phone: </span>
+                        <span style={{opacity:"0.6"}}>Contact: </span>
                         <strong>{booking.contactNumber || "N/A"}</strong>
                       </div>
 

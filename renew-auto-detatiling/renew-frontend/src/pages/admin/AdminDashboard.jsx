@@ -34,11 +34,11 @@ const AdminDashboard = () => {
             totalRevenue: finances?.totalRevenue || 0,
             pendingReceivables: finances?.pendingRevenue || 0
           });
-          // Update status counts from analytics
+          // Update status counts from analytics - include ALL statuses
           if (counts) {
             setStatusCounts({
-              PENDING: counts.pending || 0,
-              SCHEDULED: counts.scheduled || 0,
+              PENDING: (counts.pending || 0) + (counts.pendingPayment || 0),
+              SCHEDULED: (counts.scheduled || 0) + (counts.confirmed || 0),
               ONGOING: counts.ongoing || 0,
               COMPLETED: counts.completed || 0,
               CANCELLED: counts.cancelled || 0
@@ -53,17 +53,31 @@ const AdminDashboard = () => {
         
         setBookings(list.slice(0, 5));
 
-        const counts = { PENDING: 0, SCHEDULED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0 };
+        // Count all statuses from actual bookings
+        const statusCounts = { PENDING: 0, SCHEDULED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0, DRAFT: 0, CONFIRMED: 0 };
         const unassignedList = [];
 
         list.forEach(b => {
-          if (counts[b.status] !== undefined) counts[b.status]++;
-          if (!b.assignedStaffId && b.status !== "CANCELLED" && b.status !== "COMPLETED") {
+          const status = b.status?.toUpperCase();
+          if (statusCounts[status] !== undefined) {
+            statusCounts[status]++;
+          }
+          // Also check legacy statuses
+          if (b.status === "pending_payment" || b.status === "partially_paid") {
+            statusCounts.PENDING++;
+          }
+          if (!b.assignedStaffId && !["cancelled", "completed"].includes(b.status)) {
             unassignedList.push(b);
           }
         });
 
-        setStatusCounts(counts);
+        setStatusCounts({
+          PENDING: statusCounts.PENDING,
+          SCHEDULED: statusCounts.SCHEDULED,
+          ONGOING: statusCounts.ONGOING,
+          COMPLETED: statusCounts.COMPLETED,
+          CANCELLED: statusCounts.CANCELLED
+        });
         setUnassigned(unassignedList.slice(0, 5));
       } catch (err) {
         console.error("Dashboard data fetch error:", err);
@@ -75,11 +89,11 @@ const AdminDashboard = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "PENDING": return "#facc15";
-      case "SCHEDULED": return "#3b82f6";
-      case "ONGOING": return "#a855f7";
-      case "COMPLETED": return "#22c55e";
-      case "CANCELLED": return "#ef4444";
+      case "pending": return "#facc15";
+      case "scheduled": return "#3b82f6";
+      case "ongoing": return "#a855f7";
+      case "completed": return "#22c55e";
+      case "cancelled": return "#ef4444";
       default: return "#64748b";
     }
   };
@@ -110,7 +124,7 @@ const AdminDashboard = () => {
             <h2 style={styles.cardValue}>{analytics.totalBookings}</h2>
             <p style={styles.cardHint}>Click to view all</p>
           </div>
-          <div style={styles.clickableCard} onClick={() => navigateToBookings("COMPLETED")}>
+          <div style={styles.clickableCard} onClick={() => navigateToBookings("completed")}>
             <p style={styles.cardLabel}>Completed</p>
             <h2 style={styles.cardValue}>{analytics.completedBookings}</h2>
             <p style={styles.cardHint}>Click to view completed</p>

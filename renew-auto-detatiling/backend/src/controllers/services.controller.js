@@ -7,7 +7,7 @@ const getServices = async (req, res, next) => {
   try {
 
     const services = await prisma.service.findMany({
-      where: { active: true },
+      where: { isActive: true },
       orderBy: { id: "asc" }
     });
 
@@ -140,7 +140,7 @@ const createService = async (req, res, next) => {
 
     const duplicate = await prisma.service.findFirst({
       where: {
-        active: true,
+        isActive: true,
         name,
         category,
         price,

@@ -36,13 +36,13 @@ const AppointmentCard = ({ booking, onCancel }) => {
         <BookingStatusBadge status={booking.status} />
       </p>
 
-      {hasPayment && booking.status !== "CANCELLED" && (
+      {hasPayment && booking.status !== "cancelled" && (
         <p style={{ color: "#c97c00", fontSize: "13px" }}>
           ⚠ Payment recorded for this booking
         </p>
       )}
 
-      {["PENDING", "SCHEDULED"].includes(booking.status) && onCancel && (
+      {["pending", "scheduled"].includes(booking.status) && onCancel && (
 
         <button
           onClick={async () => {

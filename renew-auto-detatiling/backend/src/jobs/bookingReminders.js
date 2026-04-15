@@ -28,7 +28,7 @@ async function sendBookingReminders() {
       sameDayReminderSent: false,
 
       status: {
-        in: ["SCHEDULED"]
+        in: ["scheduled"]
       }
 
     },
@@ -80,7 +80,7 @@ async function sendBookingReminders() {
       oneHourReminderSent: false,
 
       status: {
-        in: ["SCHEDULED"]
+        in: ["scheduled"]
       }
 
     },

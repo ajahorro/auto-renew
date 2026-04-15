@@ -89,8 +89,8 @@ const StaffDashboard = () => {
     });
   };
 
-  const activeBookings = bookings.filter(b => b.status !== "COMPLETED" && b.status !== "CANCELLED");
-  const completedBookings = bookings.filter(b => b.status === "COMPLETED" || b.status === "CANCELLED");
+  const activeBookings = bookings.filter(b => b.status !== "completed" && b.status !== "cancelled");
+  const completedBookings = bookings.filter(b => b.status === "completed" || b.status === "cancelled");
 
   // Get bookings for schedule view
   const getScheduleBookings = () => {
@@ -374,27 +374,27 @@ const StaffDashboard = () => {
                         </div>
 
                         <div style={styles.actionRow}>
-                          {b.status === "SCHEDULED" && (
+                          {b.status === "scheduled" && (
                             <button
                               style={styles.startBtn}
                               disabled={updatingId === b.id}
-                              onClick={() => updateStatus(b.id, "ONGOING")}
+                              onClick={() => updateStatus(b.id, "ongoing")}
                             >
                               {updatingId === b.id ? "Updating..." : "Start Service"}
                             </button>
                           )}
 
-                          {b.status === "ONGOING" && (
+                          {b.status === "ongoing" && (
                             <button
                               style={styles.completeBtn}
                               disabled={updatingId === b.id}
-                              onClick={() => updateStatus(b.id, "COMPLETED")}
+                              onClick={() => updateStatus(b.id, "completed")}
                             >
                               {updatingId === b.id ? "Updating..." : "Mark Completed"}
                             </button>
                           )}
 
-                          {(b.status === "PENDING" || b.status === "SCHEDULED") && (
+                          {(b.status === "pending" || b.status === "scheduled") && (
                             <button
                               style={styles.cancelBtn}
                               disabled={updatingId === b.id}

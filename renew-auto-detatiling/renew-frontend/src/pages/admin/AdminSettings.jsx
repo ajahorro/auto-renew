@@ -361,20 +361,20 @@ const AdminSettings = () => {
                             <td style={styles.tableCell}>
                               <span style={{
                                 ...styles.statusBadge,
-                                background: user.active ? "#22c55e" : "#ef4444"
+                                background: user.isActive ? "#22c55e" : "#ef4444"
                               }}>
-                                {user.active ? "Active" : "Inactive"}
+                                {user.isActive ? "Active" : "Inactive"}
                               </span>
                             </td>
                             <td style={styles.tableCell}>
                               <button 
                                 style={{
                                   ...styles.actionBtn,
-                                  background: user.active ? "#ef4444" : "#22c55e"
+                                  background: user.isActive ? "#ef4444" : "#22c55e"
                                 }}
-                                onClick={() => toggleUserStatus(user.id, user.active)}
+                                onClick={() => toggleUserStatus(user.id, user.isActive)}
                               >
-                                {user.active ? "Deactivate" : "Activate"}
+                                {user.isActive ? "Deactivate" : "Activate"}
                               </button>
                             </td>
                           </tr>
@@ -414,9 +414,9 @@ const AdminSettings = () => {
                             <td style={styles.tableCell}>
                               <span style={{
                                 ...styles.statusBadge,
-                                background: user.active ? "#22c55e" : "#ef4444"
+                                background: user.isActive ? "#22c55e" : "#ef4444"
                               }}>
-                                {user.active ? "Active" : "Inactive"}
+                                {user.isActive ? "Active" : "Inactive"}
                               </span>
                             </td>
                             <td style={styles.tableCell}>

@@ -54,7 +54,7 @@ const BillingPanel = ({ booking, refresh }) => {
   const requiredDownpayment = Number(booking.downpaymentAmount || 0);
   const remainingDownpayment = Math.max(requiredDownpayment - paid, 0);
   const needsDownpaymentVerification =
-    booking.status === "PENDING" &&
+    booking.status === "pending" &&
     booking.downpaymentRequested &&
     remainingDownpayment > 0;
 

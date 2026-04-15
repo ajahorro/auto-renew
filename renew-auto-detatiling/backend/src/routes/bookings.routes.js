@@ -9,6 +9,7 @@ const {
   getBookings,
   getBookingById,
   cancelBooking,
+  requestCustomerCancel,
   assignStaff,
   updateBookingStatus,
   recordPayment,
@@ -30,15 +31,15 @@ const {
 /* CREATE BOOKING */
 router.post("/", authenticate, createBooking);
 
+/* AVAILABILITY - must be before /:id */
+router.get("/availability", getAvailability);
+
 /* GET BOOKINGS */
 router.get("/", authenticate, getBookings);
 
 /* UPDATE BOOKING (CUSTOMER) */
 router.patch("/update/:id", authenticate, authorize("CUSTOMER"), updateBooking);
 router.patch("/:id", authenticate, authorize("CUSTOMER"), updateBooking);
-
-/* AVAILABILITY */
-router.get("/availability", getAvailability);
 
 /* ADMIN ANALYTICS */
 router.get("/admin-analytics", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAdminAnalytics);
@@ -67,11 +68,14 @@ router.patch("/status/:id", authenticate, updateBookingStatus);
 router.patch("/:id/status", authenticate, updateBookingStatus);
 
 /* RECORD PAYMENT */
-router.patch("/payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), recordPayment);
-router.patch("/:id/payment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), recordPayment);
+router.patch("/payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), recordPayment);
+router.patch("/:id/payment", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), recordPayment);
 
 /* CANCEL BOOKING */
 router.patch("/cancel/:id", authenticate, cancelBooking);
+
+/* CUSTOMER REQUEST CANCEL */
+router.patch("/request-cancel/:id", authenticate, requestCustomerCancel);
 
 /* STAFF REQUEST CANCEL */
 router.post("/:id/request-cancel", authenticate, authorize("STAFF"), requestCancelBooking);

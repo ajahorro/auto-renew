@@ -11,6 +11,7 @@ const sendBookingReminders = require("./jobs/bookingReminders");
 // Routes
 const servicesRoutes = require("./routes/services.routes");
 const bookingsRoutes = require("./routes/bookings.routes");
+const paymentsRoutes = require("./routes/payments.routes");
 const notificationsRoutes = require("./routes/notifications.routes");
 const usersRoutes = require("./routes/users.routes");
 const businessSettingsRoutes = require("./routes/businessSettings.routes");
@@ -46,7 +47,8 @@ app.post("/api/auth/reset-password", authController.resetPassword);
 
 /* MAIN ROUTES*/
 app.use("/api/services", servicesRoutes);
-app.use("/api/bookings", bookingsRoutes); 
+app.use("/api/bookings", bookingsRoutes);
+app.use("/api/payments", paymentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/business-settings", businessSettingsRoutes);
@@ -69,7 +71,7 @@ app.get("/api/admin/users", authenticate, authorize("ADMIN", "SUPER_ADMIN"), asy
         email: true,
         fullName: true,
         role: true,
-        active: true,
+        isActive: true,
         createdAt: true,
         _count: {
           select: { bookings: true, assignedBookings: true }
@@ -106,7 +108,7 @@ app.post("/api/admin/users", authenticate, authorize("ADMIN", "SUPER_ADMIN"), as
 
     const user = await prisma.user.create({
       data: { email, password: hashedPassword, fullName, role },
-      select: { id: true, email: true, fullName: true, role: true, active: true, createdAt: true }
+      select: { id: true, email: true, fullName: true, role: true, isActive: true, createdAt: true }
     });
 
     res.json({ success: true, user });
@@ -120,7 +122,7 @@ app.patch("/api/admin/users/:id/deactivate", authenticate, authorize("ADMIN", "S
   try {
     await prisma.user.update({
       where: { id: req.params.id },
-      data: { active: false }
+      data: { isActive: false }
     });
     res.json({ success: true, message: "User deactivated" });
   } catch (error) {
@@ -132,7 +134,7 @@ app.patch("/api/admin/users/:id/activate", authenticate, authorize("ADMIN", "SUP
   try {
     await prisma.user.update({
       where: { id: req.params.id },
-      data: { active: true }
+      data: { isActive: true }
     });
     res.json({ success: true, message: "User activated" });
   } catch (error) {

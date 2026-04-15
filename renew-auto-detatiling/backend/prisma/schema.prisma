@@ -7,215 +7,361 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================
+// ENUMS
+// ============================================
+
 enum Role {
-  SUPER_ADMIN @map("SUPER ADMIN")
-  ADMIN       @map("ADMIN")
-  STAFF       @map("STAFF")
-  CUSTOMER    @map("CUSTOMER")
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+  CUSTOMER
 }
 
 enum BookingStatus {
-  PENDING   @map("PENDING")
-  SCHEDULED @map("SCHEDULED")
-  ONGOING   @map("ONGOING")
-  COMPLETED @map("COMPLETED")
-  CANCELLED @map("CANCELLED")
-}
-
-enum PaymentStatus {
-  UNPAID         @map("UNPAID")
-  PARTIALLY_PAID @map("PARTIALLY PAID")
-  PAID           @map("PAID")
+  draft           // Initial state, can be edited
+  pending         // Awaiting approval
+  pending_payment // Submitted, waiting for payment
+  partially_paid // Downpayment received
+  confirmed       // Fully paid
+  scheduled       // Scheduled
+  ongoing         // Service in progress
+  completed       // Service completed
+  cancelled       // Cancelled
+  cancel_requested // Customer requested cancellation
 }
 
 enum PaymentMethod {
-  CASH  @map("CASH")
-  GCASH @map("GCASH")
+  GCASH
+  CASH
+  MANUAL // RU (Manual) - Admin recorded
+}
+
+enum PaymentStatus {
+  pending   // Awaiting verification
+  verified  // Admin verified
+  rejected  // Admin rejected
+  completed // Payment processed
+}
+
+enum RefundStatus {
+  none
+  pending
+  processed
+  forfeited // < 24 hours cancellation
 }
 
 enum ServiceCategory {
-  EXTERIOR    @map("EXTERIOR")
-  INTERIOR    @map("INTERIOR")
-  SPECIALIZED @map("SPECIALIZED")
+  EXTERIOR
+  INTERIOR
+  SPECIALIZED
 }
 
+// ============================================
+// USER MODEL
+// ============================================
+
 model User {
-  id String @id @default(cuid())
+  id          String  @id @default(cuid())
+  email       String  @unique
+  password    String
+  fullName    String
+  phone       String?
 
-  email    String @unique
-  password String
-  fullName String
-  phone    String?
-
-  role Role @default(CUSTOMER)
+  role           Role     @default(CUSTOMER)
+  isActive        Boolean  @default(true)
+  emailVerified   Boolean  @default(false)
 
   resetToken       String?
   resetTokenExpiry DateTime?
 
-  active Boolean @default(true)
-  archivedAt DateTime?
-
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  updatedAt DateTime? @updatedAt
+  // Relations
+  bookings         Booking[]       @relation("CustomerBookings")
+  assignedBookings Booking[]       @relation("StaffAssignedBookings")
+  notifications   Notification[]
 
-  bookings         Booking[] @relation("CustomerBookings")
-  assignedBookings Booking[] @relation("StaffBookings")
+  // OTP for registration
+  otpVerification OtpVerification?
 
-  notifications Notification[]
-
+  @@index([email])
   @@index([role])
-  @@index([active])
-  @@index([archivedAt])
+  @@index([isActive])
 }
+
+// ============================================
+// OTP VERIFICATION MODEL
+// ============================================
+
+model OtpVerification {
+  id        String    @id @default(cuid())
+  userId    String    @unique
+  otpHash   String    // Hashed 6-digit OTP
+  expiresAt DateTime  // Expiry timestamp
+  attempts  Int       @default(0) // Retry attempts
+  verifiedAt DateTime? // When verified
+  createdAt DateTime  @default(now())
+
+  // Relation
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ============================================
+// SERVICE MODEL
+// ============================================
 
 model Service {
-  id          Int             @id @default(autoincrement())
+  id          Int            @id @default(autoincrement())
   name        String
   description String?
-  price       Decimal         @db.Decimal(10, 2)
-  durationMin Int
+  price       Decimal        @db.Decimal(10, 2)
+  durationMin Int             // Duration in minutes
   category    ServiceCategory
-  active      Boolean         @default(true)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime?        @updatedAt
 
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
+
+  // Relations
   bookingItems BookingItem[]
+
+  @@index([category])
+  @@index([isActive])
 }
 
+// ============================================
+// BOOKING MODEL
+// ============================================
+
 model Booking {
-  id Int @id @default(autoincrement())
+  id         Int  @id @default(autoincrement())
+  customerId String
 
-  customerId      String
-  assignedStaffId String?
+  // Status
+  status BookingStatus @default(draft)
 
-  addonRequests AddonRequest[]
+  // Financial
+  totalAmount       Decimal @default(0.00) @db.Decimal(10, 2)
+  isDownpaymentRequired Boolean @default(false)
+  downpaymentAmount    Decimal @default(0.00) @db.Decimal(10, 2) // Stored as fixed value
+  amountPaid         Decimal @default(0.00) @db.Decimal(10, 2)
 
-  status BookingStatus @default(PENDING)
-
-  totalAmount Decimal @default(0.00) @db.Decimal(10, 2)
-  amountPaid  Decimal @default(0.00) @db.Decimal(10, 2)
-
-  paymentStatus PaymentStatus @default(UNPAID)
-
-  appointmentStart DateTime
-  appointmentEnd   DateTime?
-
-  notes String?
-
-  isLocked Boolean @default(false)
-
+  // Vehicle Info
   vehicleType   String?
-  plateNumber   String?
+  plateNumber  String?
   contactNumber String?
-  email         String?
-  vehicleBrand  String?
-  vehicleModel  String?
+  notes        String?
 
+  // Appointment
+  appointmentDate DateTime? // Main appointment date
+
+  // Cancellation
+  cancellationReason String?
+  cancelledAt       DateTime?
+  cancelledBy       String? // userId who cancelled
+  refundStatus      RefundStatus @default(none)
+
+  // Legacy fields (kept for compatibility)
+  addonRequests AddonRequest[]
+  appointmentStart DateTime?
+  appointmentEnd   DateTime?
+  paymentStatus PaymentStatus @default(pending)
   paymentMethod PaymentMethod @default(CASH)
-
-  downpaymentRequested Boolean  @default(false)
-  downpaymentAmount    Decimal? @db.Decimal(10, 2)
-
+  isLocked         Boolean @default(false)
+  vehicleBrand     String?
+  vehicleModel     String?
+  downpaymentRequested Boolean @default(false)
   sameDayReminderSent Boolean @default(false)
   oneHourReminderSent Boolean @default(false)
 
+  // Timestamps
   createdAt DateTime @default(now())
-
   updatedAt DateTime @updatedAt
 
-  customer      User  @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
-  assignedStaff User? @relation("StaffBookings", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  // Auto-cancel if no payment after X hours
+  autoCancelAt DateTime?
+
+  // Relations
+  customer       User         @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  assignedStaffId String?
+  assignedStaff   User?       @relation("StaffAssignedBookings", fields: [assignedStaffId], references: [id], onDelete: SetNull)
 
   items    BookingItem[]
   payments Payment[]
 
   @@index([customerId])
-  @@index([assignedStaffId])
   @@index([status])
-  @@index([paymentStatus])
-  @@index([downpaymentRequested])
-  @@index([appointmentStart])
-  @@index([createdAt])
+  @@index([appointmentDate])
+  @@index([assignedStaffId])
 }
 
-model BookingItem {
-  id Int @id @default(autoincrement())
+// ============================================
+// BOOKING ITEM MODEL
+// ============================================
 
+model BookingItem {
+  id        Int  @id @default(autoincrement())
   bookingId Int
   serviceId Int
 
-  priceAtBooking       Decimal @db.Decimal(10, 2)
-  durationAtBooking    Int
+  // Service snapshot (in case service prices change)
   serviceNameAtBooking String
+  priceAtBooking       Decimal @db.Decimal(10, 2)
+  durationAtBooking    Int      // Duration in minutes
 
   quantity Int @default(1)
 
+  // Schedule
+  scheduledDateTime DateTime?
+
+  // Assignment
+  assignedStaffId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
+
+  // Relations
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   service Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
   @@unique([bookingId, serviceId])
   @@index([bookingId])
   @@index([serviceId])
+  @@index([scheduledDateTime])
 }
 
+// ============================================
+// PAYMENT MODEL
+// ============================================
+
 model Payment {
-  id Int @id @default(autoincrement())
-
+  id        Int  @id @default(autoincrement())
   bookingId Int
-  amount    Decimal @db.Decimal(10, 2)
 
+  // Payment Details
+  amount Decimal @db.Decimal(10, 2)
   method PaymentMethod @default(CASH)
+  status PaymentStatus @default(pending)
+
+  // For GCash payments
+  receiptImage    String? // File path to uploaded receipt
+  referenceNumber String? // GCash reference number
+  extractedAmount  Decimal? @db.Decimal(10, 2) // Amount extracted from OCR
+  extractedDate    String?   // Date extracted from OCR
+  rawOcrText      String?   // Raw OCR output
+
+  // For manual (RU) payments
+  manualNote String? // Admin notes for RU payments
+
+  // Verification
+  verifiedBy       String?  // Admin userId who verified
+  verifiedAt       DateTime?
+  rejectionReason String?
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  // Relation
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([bookingId])
-  @@index([createdAt])
+  @@index([status])
+  @@index([method])
 }
 
-model Notification {
-  id Int @id @default(autoincrement())
+// ============================================
+// NOTIFICATION MODEL
+// ============================================
 
+model Notification {
+  id     Int    @id @default(autoincrement())
   userId String
 
   title   String
   message String
+  type    String @default("GENERAL") // BOOKING, PAYMENT, SYSTEM
 
-  type String @default("GENERAL")
-
+  // For linking to related entities
   actionType String?
-  actorId    String?
-  actorName  String?
-  targetId   String?
-  targetName String?
+  targetId    String?
+  targetName  String?
+  actorId     String?
+  actorName   String?
 
-  isRead Boolean @default(false)
-
+  isRead   Boolean @default(false)
   createdAt DateTime @default(now())
 
+  // Relation
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
-  @@index([actionType])
 }
+
+// ============================================
+// BUSINESS SETTINGS MODEL
+// ============================================
 
 model BusinessSettings {
   id Int @id @default(1)
 
-  openingHour Int @default(8)
-  closingHour Int @default(18)
+  // Operating Hours
+  openingHour Int @default(9)   // 9 AM
+  closingHour Int @default(18)  // 6 PM
+  slotDurationMinutes Int @default(60) // 1 hour slots
 
-  slotDurationMinutes Int @default(60)
-
-  maxBookingsPerSlot Int @default(3)
+  // Booking Limits
+  maxBookingsPerSlot    Int @default(3)
   maxServicesPerBooking Int @default(5)
 
+  // Payment Rules
+  downpaymentThreshold  Decimal @default(5000.00) @db.Decimal(10, 2) // Amount requiring downpayment
+  downpaymentPercentage Decimal @default(0.50) @db.Decimal(5, 2) // 50% downpayment
+
+  // Cancellation Policy
+  cancellationWindowHours Int @default(24) // 24 hours before
+
+  // Auto-cancel
+  autoCancelPaymentHours Int? // Hours before auto-cancel for non-payment
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
+// ============================================
+// AUDIT LOG MODEL
+// ============================================
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  userId    String? // Who performed action
+  action    String  // CREATE, UPDATE, DELETE, VERIFY, REJECT
+  entityType String  // Booking, Payment, User, etc.
+  entityId  String  // ID of affected entity
+
+  oldValue String? // JSON of previous state
+  newValue String? // JSON of new state
+
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================
+// LEGACY MODELS (kept for migration compatibility)
+// ============================================
 
 model AddonRequest {
   id        Int      @id @default(autoincrement())

@@ -69,10 +69,10 @@ const AdminSchedule = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "PENDING": return "#facc15";
-      case "SCHEDULED": return "#3b82f6";
-      case "ONGOING": return "#f97316";
-      case "COMPLETED": return "#22c55e";
+      case "pending": return "#facc15";
+      case "scheduled": return "#3b82f6";
+      case "ongoing": return "#f97316";
+      case "completed": return "#22c55e";
       default: return "#64748b";
     }
   };

@@ -17,7 +17,7 @@ router.get("/", async (req, res) => {
 
     const services = await prisma.service.findMany({
       where: {
-        active: true
+        isActive: true
       },
       orderBy: {
         name: "asc"
@@ -154,7 +154,7 @@ router.delete("/:id",
       await prisma.service.update({
         where: { id },
         data: {
-          active: false
+          isActive: false
         }
       });
 

@@ -14,6 +14,7 @@ import AdminSchedule from "./pages/admin/AdminSchedule";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminServices from "./pages/admin/AdminServices";
 import AdminNotifications from "./pages/admin/AdminNotifications";
+import AdminPayments from "./pages/admin/AdminPayments";
 
 /* ================= STAFF ================= */
 import StaffDashboard from "./pages/staff/StaffDashboard";
@@ -129,6 +130,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}>
               <AdminNotifications />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/payments"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}>
+              <AdminPayments />
             </ProtectedRoute>
           }
         />

@@ -88,8 +88,8 @@ const StaffTasks = () => {
   };
 
   const filteredBookings = bookings.filter(b => {
-    if (filter === "active") return b.status !== "COMPLETED" && b.status !== "CANCELLED";
-    if (filter === "completed") return b.status === "COMPLETED" || b.status === "CANCELLED";
+    if (filter === "active") return b.status !== "completed" && b.status !== "cancelled";
+    if (filter === "completed") return b.status === "completed" || b.status === "cancelled";
     return true;
   });
 
@@ -290,7 +290,7 @@ const StaffTasks = () => {
             {filteredBookings.map(b => {
               const services = b.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ") || "No services";
               const total = b.items?.reduce((sum,i)=>sum + Number(i.priceAtBooking || 0), 0) || 0;
-              const isReadOnly = b.status === "COMPLETED" || b.status === "CANCELLED";
+              const isReadOnly = b.status === "completed" || b.status === "cancelled";
               
               return(
                 <div key={b.id} style={{...styles.card, opacity: isReadOnly ? 0.8 : 1}}>
@@ -328,27 +328,27 @@ const StaffTasks = () => {
 
                   {!isReadOnly ? (
                     <div style={styles.actionRow}>
-                      {b.status === "SCHEDULED" && (
+                      {b.status === "scheduled" && (
                         <button
                           style={styles.startBtn}
                           disabled={updatingId === b.id}
-                          onClick={() => updateStatus(b.id, "ONGOING")}
+                          onClick={() => updateStatus(b.id, "ongoing")}
                         >
                           {updatingId === b.id ? "Updating..." : "Start Service"}
                         </button>
                       )}
 
-                      {b.status === "ONGOING" && (
+                      {b.status === "ongoing" && (
                         <button
                           style={styles.completeBtn}
                           disabled={updatingId === b.id}
-                          onClick={() => updateStatus(b.id, "COMPLETED")}
+                          onClick={() => updateStatus(b.id, "completed")}
                         >
                           {updatingId === b.id ? "Updating..." : "Mark Completed"}
                         </button>
                       )}
 
-                      {(b.status === "PENDING" || b.status === "SCHEDULED") && (
+                      {(b.status === "pending" || b.status === "scheduled") && (
                         <button
                           style={styles.cancelBtn}
                           disabled={updatingId === b.id}

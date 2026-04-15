@@ -23,7 +23,7 @@ const createNotification = async (userId, data) => {
 const notifyAdmins = async (title, message, actionType, actorId = null, actorName = "System") => {
   try {
     const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, active: true }
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
     });
     
     for (const admin of admins) {

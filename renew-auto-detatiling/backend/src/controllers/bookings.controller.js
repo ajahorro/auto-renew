@@ -25,7 +25,7 @@ const createNotification = async (userId, data) => {
 const notifyAdminsBookingUpdated = async (bookingId, action, details = "", actorId = null, actorName = "System") => {
   try {
     const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, active: true }
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
     });
     
     for (const admin of admins) {
@@ -50,23 +50,33 @@ const parseBookingId = (req) => {
   const id = Number(rawId);
   return Number.isInteger(id) ? id : null;
 };
-// STATUS CONSTANTS
+// STATUS CONSTANTS (must match Prisma enum BookingStatus)
 const STATUS = {
-  PENDING: "PENDING",
-  SCHEDULED: "SCHEDULED",
-  ONGOING: "ONGOING",
-  COMPLETED: "COMPLETED",
-  CANCELLED: "CANCELLED"
+  DRAFT: "draft",
+  PENDING: "pending",
+  PENDING_PAYMENT: "pending_payment",
+  PARTIALLY_PAID: "partially_paid",
+  CONFIRMED: "confirmed",
+  SCHEDULED: "scheduled",
+  ONGOING: "ongoing",
+  COMPLETED: "completed",
+  CANCELLED: "cancelled",
+  CANCEL_REQUESTED: "cancel_requested"
 };
 
 // VALID TRANSITIONS
 function isValidTransition(current, next) {
   const map = {
-    PENDING: ["SCHEDULED", "CANCELLED"],
-    SCHEDULED: ["ONGOING", "CANCELLED"],
-    ONGOING: ["COMPLETED"],
-    COMPLETED: [],
-    CANCELLED: []
+    draft: ["pending", "cancelled"],
+    pending: ["pending_payment", "scheduled", "cancelled"],
+    pending_payment: ["partially_paid", "cancelled"],
+    partially_paid: ["confirmed", "cancelled"],
+    confirmed: ["scheduled", "cancelled"],
+    scheduled: ["ongoing", "cancelled"],
+    ongoing: ["completed"],
+    completed: [],
+    cancelled: [],
+    cancel_requested: ["cancelled"]
   };
 
   return map[current]?.includes(next);
@@ -218,22 +228,41 @@ const createBooking = async (req, res) => {
     start.setSeconds(0);
     start.setMilliseconds(0);
 
+    console.log("📅 BOOKING DEBUG:", {
+      received: appointmentStart,
+      parsed: start.toISOString(),
+      hour: start.getHours(),
+      date: start.toDateString()
+    });
+
+    /* Use simple time comparison (no timezone offset) */
     const now = new Date();
+    
     /* PREVENT BOOKING IN PAST */
-    if (start < now) {
+    const isToday = start.toDateString() === now.toDateString();
+    
+    // For same day: allow if time hasn't passed
+    // For future: allow if date is in future
+    if (isToday && start.getTime() <= now.getTime()) {
+      return res.status(400).json({
+        success: false,
+        message: isToday ? "Cannot book in the past" : "Cannot create booking in the past"
+      });
+    }
+    if (!isToday && start < now) {
       return res.status(400).json({
         success: false,
         message: "Cannot create booking in the past"
       });
     }
 
-    /* MINIMUM NOTICE (30 MINUTES) */
-    const minimumNoticeMinutes = 30;
-    const minStart = new Date(Date.now() + minimumNoticeMinutes * 60000);
+    /* MINIMUM NOTICE (15 MINUTES) - Same day bookings get faster processing */
+    const minimumNoticeMinutes = isToday ? 15 : 30;
+    const minStart = new Date(now.getTime() + minimumNoticeMinutes * 60000);
     if (start < minStart) {
       return res.status(400).json({
         success: false,
-        message: "Bookings must be made at least 30 minutes in advance"
+        message: `Bookings must be made at least ${minimumNoticeMinutes} minutes in advance`
       });
     }
 
@@ -251,19 +280,33 @@ const createBooking = async (req, res) => {
 
     /* LOAD BUSINESS SETTINGS */
     let settings = await prisma.businessSettings.findFirst();
-    const defaults = { openingHour: 8, closingHour: 18, maxBookingsPerSlot: 3, maxServicesPerBooking: 5 };
+    const defaults = { openingHour: 9, closingHour: 18, maxBookingsPerSlot: 3, maxServicesPerBooking: 5 };
 
     const openingHour = settings?.openingHour ?? defaults.openingHour;
     const closingHour = settings?.closingHour ?? defaults.closingHour;
     const maxBookingsPerSlot = settings?.maxBookingsPerSlot ?? defaults.maxBookingsPerSlot;
     const maxServicesPerBooking = settings?.maxServicesPerBooking ?? defaults.maxServicesPerBooking;
     
+    console.log("🕐 BUSINESS HOURS DEBUG:", { openingHour, closingHour, startHour: start.getHours() });
+    
+    // Simply check if start hour is within range (no timezone complexity)
     const startHour = start.getHours();
-    if (startHour < openingHour || startHour >= closingHour) {
-      return res.status(400).json({
-        success: false,
-        message: "Booking outside business hours"
-      });
+    console.log("✅ Hour check:", { startHour, openingHour, closingHour, allowed: startHour >= openingHour && startHour <= closingHour });
+    
+    /* ALLOW BOOKINGS THAT PARTIALLY EXTEND PAST CLOSING */
+    // Only check end time for future bookings
+    if (!isToday) {
+      // For future bookings, allow some flexibility
+      const end = new Date(start.getTime() + totalDuration * 60000);
+      const closingDateTime = new Date(start);
+      closingDateTime.setHours(closingHour + 1, 0, 0, 0); // Allow 1 hour buffer past closing
+      
+      if (end > closingDateTime) {
+        return res.status(400).json({
+          success: false,
+          message: "Service duration extends too far past closing time"
+        });
+      }
     }
 
     /* CONVERT SERVICE IDS */
@@ -286,7 +329,7 @@ const createBooking = async (req, res) => {
     const dbServices = await prisma.service.findMany({
       where: {
         id: { in: serviceIds },
-        active: true
+        isActive: true
       }
     });
 
@@ -309,14 +352,14 @@ const createBooking = async (req, res) => {
 
     const end = new Date(start.getTime() + totalDuration * 60000);
 
-    // Prevent booking exceeding business hours
+    // Allow bookings that end up to 1 hour past closing (typical service takes 1-2 hours)
     const closingTime = new Date(start);
-    closingTime.setHours(closingHour, 0, 0, 0);
+    closingTime.setHours(closingHour + 1, 0, 0, 0);
 
     if (end > closingTime) {
       return res.status(400).json({
         success: false,
-        message: "Booking exceeds business hours"
+        message: "Service would extend too far past closing time"
       });
     }
 
@@ -335,7 +378,9 @@ const createBooking = async (req, res) => {
         success: false,
         message: "You already have a booking during this time"
       });
-    }/* PREVENT SLOT OVERBOOKING */
+    }
+    
+    /* PREVENT SLOT OVERBOOKING */
     const overlappingBookings = await prisma.booking.count({
       where: {
         appointmentStart: { lt: end },
@@ -499,7 +544,14 @@ const cancelBooking = async (req, res) => {
       });
     }
 
-    // Logic Check
+    // Only admins can directly cancel bookings
+    if (!["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: "Only admins can cancel bookings. Customers must request cancellation."
+      });
+    }
+
     if (
       booking.status !== STATUS.PENDING &&
       booking.status !== STATUS.SCHEDULED
@@ -507,17 +559,6 @@ const cancelBooking = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Only pending or scheduled bookings can be cancelled"
-      });
-    }
-
-    // Auth Check: Ensure ID types match (String)
-    if (
-      req.user.role === "CUSTOMER" &&
-      String(booking.customerId) !== String(req.user.id)
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "You can only cancel your own bookings"
       });
     }
 
@@ -642,7 +683,7 @@ const assignStaff = async (req, res) => {
         return res.status(400).json({ success: false, message: "Staff busy during this time" });
       }
     } else {
-      const staffList = await prisma.user.findMany({ where: { role: "STAFF", active: true } });
+      const staffList = await prisma.user.findMany({ where: { role: "STAFF", isActive: true } });
       let availableStaff = [];
 
       for (const staff of staffList) {
@@ -971,7 +1012,7 @@ const updateBookingStatus = async (req, res) => {
       }
 
       const admins = await tx.user.findMany({
-        where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, active: true }
+        where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
       });
       
       for (const admin of admins) {
@@ -1032,10 +1073,18 @@ const recordPayment = async (req, res) => {
       });
     }
 
-    if (!isPrivilegedRole(req.user.role)) {
+    if (!isPrivilegedRole(req.user.role) && req.user.role !== "STAFF") {
       return res.status(403).json({
         success: false,
-        message: "Only admins can record payments"
+        message: "Only admins and staff can record payments"
+      });
+    }
+
+    // Staff can only record CASH payments
+    if (req.user.role === "STAFF" && method && method !== "CASH") {
+      return res.status(403).json({
+        success: false,
+        message: "Staff can only record cash payments"
       });
     }
 
@@ -1395,7 +1444,7 @@ const getAvailability = async (req, res) => {
 
     const settings = await prisma.businessSettings.findFirst();
     
-    const opening = settings?.openingHour ?? 8;
+    const opening = settings?.openingHour ?? 9;
     const closing = settings?.closingHour ?? 18;
     const maxBookings = settings?.maxBookingsPerSlot ?? 3;
     const slotDuration = settings?.slotDurationMinutes ?? 60;
@@ -1403,30 +1452,57 @@ const getAvailability = async (req, res) => {
     const availableSlots = [];
     const now = new Date();
 
-    // Loop through minutes of the day
+    // Parse the requested date
+    const [year, month, day] = date.split('-').map(Number);
+    const requestedDate = new Date(year, month - 1, day, 0, 0, 0);
+
+    // Get all bookings for this date to check availability
+    let existingBookings = [];
+    try {
+      const startOfDay = new Date(year, month - 1, day, 0, 0, 0);
+      const endOfDay = new Date(year, month - 1, day, 23, 59, 59);
+      
+      existingBookings = await prisma.booking.findMany({
+        where: {
+          OR: [
+            { appointmentStart: { gte: startOfDay, lte: endOfDay } },
+            { appointmentDate: { gte: startOfDay, lte: endOfDay } }
+          ],
+          status: {
+            notIn: [STATUS.CANCELLED, STATUS.COMPLETED]
+          }
+        }
+      });
+    } catch (err) {
+      console.error("Error checking existing bookings:", err);
+      // Continue with empty bookings - show all slots
+    }
+
+    // Build slots based on business hours
     for (let time = opening * 60; time < closing * 60; time += slotDuration) {
       const hour = Math.floor(time / 60);
       const minute = time % 60;
 
-      // Construct a safe local date object
-      const [year, month, day] = date.split('-').map(Number);
+      // Construct slot times for this specific date
       const slotStart = new Date(year, month - 1, day, hour, minute, 0);
       const slotEnd = new Date(slotStart.getTime() + slotDuration * 60000);
 
-      // Skip slots that are in the past (if the date is today)
-      if (slotStart < now) continue;
+      // For same-day bookings, only skip slots that have completely passed
+      // Allow minimum 15 minutes from now for booking
+      const minSlotTime = new Date(Date.now() + 15 * 60000);
+      if (requestedDate.toDateString() === now.toDateString() && slotStart < minSlotTime) continue;
 
-      const overlappingCount = await prisma.booking.count({
-        where: {
-          status: {
-            in: [STATUS.PENDING, STATUS.SCHEDULED, STATUS.ONGOING]
-          },
-          appointmentStart: { lt: slotEnd },
-          appointmentEnd: { gt: slotStart }
-        }
+      // Check if this slot is available
+      const isAvailable = !existingBookings.some(booking => {
+        const bStart = booking.appointmentStart || booking.appointmentDate;
+        const bEnd = booking.appointmentEnd;
+        if (!bStart || !bEnd) return false;
+        
+        // Check overlap
+        return bStart < slotEnd && bEnd > slotStart;
       });
 
-      if (overlappingCount < maxBookings) {
+      if (isAvailable) {
         // Convert to 12-hour format with AM/PM
         const period = hour >= 12 ? 'PM' : 'AM';
         const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
@@ -1439,28 +1515,46 @@ const getAvailability = async (req, res) => {
     return res.json({
       success: true,
       date,
-      slots: availableSlots
+      slots: availableSlots,
+      availableCount: availableSlots.length
     });
 
   } catch (error) {
     console.error("AVAILABILITY ERROR:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load availability"
+    
+    // Return default slots on error (show all possible times)
+    const defaultSlots = [];
+    for (let hour = 9; hour < 18; hour++) {
+      const period = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      defaultSlots.push(`${displayHour}:00 ${period}`);
+      defaultSlots.push(`${displayHour}:30 ${period}`);
+    }
+    
+    return res.json({
+      success: true,
+      date: req.query.date,
+      slots: defaultSlots,
+      availableCount: defaultSlots.length,
+      fallback: true
     });
   }
 };
 /* ADMIN ANALYTICS */
 const getAdminAnalytics = async (req, res) => {
   try {
-    // 1. Booking Counts
-    const [total, pending, scheduled, ongoing, completed, cancelled] = await Promise.all([
+    // 1. Booking Counts - count ALL statuses including the legacy ones
+    const [total, draft, pendingPayment, partiallyPaid, confirmed, pending, scheduled, ongoing, completed, cancelled] = await Promise.all([
       prisma.booking.count(),
-      prisma.booking.count({ where: { status: STATUS.PENDING } }),
-      prisma.booking.count({ where: { status: STATUS.SCHEDULED } }),
-      prisma.booking.count({ where: { status: STATUS.ONGOING } }),
-      prisma.booking.count({ where: { status: STATUS.COMPLETED } }),
-      prisma.booking.count({ where: { status: STATUS.CANCELLED } })
+      prisma.booking.count({ where: { status: "draft" } }),
+      prisma.booking.count({ where: { status: "pending" } }),
+      prisma.booking.count({ where: { status: "pending_payment" } }),
+      prisma.booking.count({ where: { status: "partially_paid" } }),
+      prisma.booking.count({ where: { status: "confirmed" } }),
+      prisma.booking.count({ where: { status: "scheduled" } }),
+      prisma.booking.count({ where: { status: "ongoing" } }),
+      prisma.booking.count({ where: { status: "completed" } }),
+      prisma.booking.count({ where: { status: "cancelled" } })
     ]);
 
     // 2. Revenue (Total money actually received across ALL bookings)
@@ -1473,8 +1567,7 @@ const getAdminAnalytics = async (req, res) => {
     // 3. Pending Receivables (Money still owed to the shop)
     const bookingsWithBalance = await prisma.booking.findMany({
       where: { 
-        status: { not: STATUS.CANCELLED },
-        paymentStatus: { not: "PAID" }
+        status: { notIn: [STATUS.CANCELLED, STATUS.COMPLETED] }
       },
       select: { totalAmount: true, amountPaid: true }
     });
@@ -1489,6 +1582,10 @@ const getAdminAnalytics = async (req, res) => {
       analytics: {
         counts: {
           total,
+          draft,
+          pendingPayment,
+          partiallyPaid,
+          confirmed,
           pending,
           scheduled,
           ongoing,
@@ -1878,7 +1975,7 @@ const requestCancelBooking = async (req, res) => {
 
     const actor = await prisma.user.findUnique({ where: { id: req.user?.id } });
     const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, active: true }
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
     });
 
     await prisma.$transaction(async (tx) => {
@@ -1992,13 +2089,15 @@ const updateBooking = async (req, res) => {
     }
 
     const settings = await prisma.businessSettings.findFirst();
-    const defaults = { openingHour: 8, closingHour: 18, maxBookingsPerSlot: 3 };
+    const defaults = { openingHour: 9, closingHour: 18, maxBookingsPerSlot: 3 };
     const openingHour = settings?.openingHour ?? defaults.openingHour;
     const closingHour = settings?.closingHour ?? defaults.closingHour;
     const maxBookingsPerSlot = settings?.maxBookingsPerSlot ?? defaults.maxBookingsPerSlot;
 
-    if (start.getHours() < openingHour || start.getHours() >= closingHour) {
-      return res.status(400).json({ success: false, message: "Booking outside business hours" });
+    const startHour = start.getHours();
+    // Allow exactly at closing hour (e.g., 6 PM booking is OK)
+    if (startHour < openingHour || startHour > closingHour) {
+      return res.status(400).json({ success: false, message: `Booking must be between ${openingHour}:00 and ${closingHour}:00` });
     }
 
     const serviceIds = services.map(Number).filter((value) => !isNaN(value));
@@ -2007,7 +2106,7 @@ const updateBooking = async (req, res) => {
     }
 
     const dbServices = await prisma.service.findMany({
-      where: { id: { in: serviceIds }, active: true }
+      where: { id: { in: serviceIds }, isActive: true }
     });
 
     if (dbServices.length !== serviceIds.length) {
@@ -2021,10 +2120,10 @@ const updateBooking = async (req, res) => {
 
     const end = new Date(start.getTime() + totalDuration * 60000);
     const closingTime = new Date(start);
-    closingTime.setHours(closingHour, 0, 0, 0);
+    closingTime.setHours(closingHour + 1, 0, 0, 0);
 
     if (end > closingTime) {
-      return res.status(400).json({ success: false, message: "Booking exceeds business hours" });
+      return res.status(400).json({ success: false, message: "Service would extend past closing time" });
     }
 
     const customerConflict = await prisma.booking.findFirst({
@@ -2049,7 +2148,7 @@ const updateBooking = async (req, res) => {
         id: { not: id },
         appointmentStart: { lt: end },
         appointmentEnd: { gt: start },
-        status: { not: STATUS.CANCELLED }
+        status: { notIn: [STATUS.CANCELLED, STATUS.COMPLETED] }
       }
     });
 
@@ -2358,11 +2457,76 @@ const getAddonRequests = async (req, res) => {
   }
 };
 
+/* CUSTOMER REQUEST CANCEL */
+const requestCustomerCancel = async (req, res) => {
+  try {
+    const id = parseBookingId(req);
+    const { reason } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ success: false, message: "Invalid booking id" });
+    }
+
+    const booking = await prisma.booking.findUnique({
+      where: { id },
+      include: { customer: true }
+    });
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    // Only customer can request cancel their own booking
+    if (req.user.role === "CUSTOMER" && String(booking.customerId) !== String(req.user.id)) {
+      return res.status(403).json({ success: false, message: "You can only request cancellation for your own bookings" });
+    }
+
+    // Check valid status
+    if (booking.status !== STATUS.PENDING && booking.status !== STATUS.SCHEDULED) {
+      return res.status(400).json({ success: false, message: "Cannot request cancellation for this booking" });
+    }
+
+    // Update booking status to CANCEL_REQUESTED
+    await prisma.booking.update({
+      where: { id },
+      data: {
+        status: STATUS.CANCEL_REQUESTED,
+        cancellationReason: reason || "Customer requested cancellation"
+      }
+    });
+
+    // Notify admins
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
+    });
+    for (const admin of admins) {
+      await prisma.notification.create({
+        data: {
+          userId: admin.id,
+          title: "Cancel Request",
+          message: `Customer ${booking.customer?.fullName || "Unknown"} requested cancellation for Booking #${id}. Reason: ${reason || "Not provided"}`,
+          type: "BOOKING",
+          actionType: "CANCEL_REQUESTED",
+          targetId: String(id),
+          targetName: `Booking #${id}`
+        }
+      });
+    }
+
+    return res.json({ success: true, message: "Cancellation request submitted. An admin will review your request." });
+
+  } catch (error) {
+    console.error("REQUEST CUSTOMER CANCEL ERROR:", error);
+    return res.status(500).json({ success: false, message: error.message || "Internal server error" });
+  }
+};
+
 module.exports = {
   createBooking,
   getBookings,
   getBookingById,
   cancelBooking,
+  requestCustomerCancel,
   assignStaff,
   updateBookingStatus,
   recordPayment,

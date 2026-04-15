@@ -85,7 +85,7 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
       
       await API.patch(`/bookings/${bookingData.id}/payment`, { amount: remainingBalance, method: "CASH" });
     }
-    updateStatus("COMPLETED", "Service completed!");
+    updateStatus("completed", "Service completed!");
   };
 
   return (
@@ -143,8 +143,8 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
 
         <div style={styles.footer}>
           <div style={styles.actionGroup}>
-            {isAdmin && bookingData.status === "PENDING" && (
-              <button style={styles.btnPrimary} onClick={() => hasAssignedStaff ? updateStatus("SCHEDULED", "Scheduled!") : alert("Assign staff first!")}>
+              {isAdmin && bookingData.status === "pending" && (
+                <button style={styles.btnPrimary} onClick={() => hasAssignedStaff ? updateStatus("scheduled", "Scheduled!") : alert("Assign staff first!")}>
                 Approve & Schedule
               </button>
             )}
@@ -157,7 +157,7 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
 };
 
 const getStatusColor = (s) => {
-  const colors = { PENDING: "#facc15", SCHEDULED: "#3b82f6", ONGOING: "#a855f7", COMPLETED: "#22c55e", CANCELLED: "#ef4444" };
+  const colors = { pending: "#facc15", scheduled: "#3b82f6", ongoing: "#a855f7", completed: "#22c55e", cancelled: "#ef4444" };
   return colors[s] || "#64748b";
 };
 

@@ -16,9 +16,9 @@ const bcrypt = require("bcryptjs");
 
 router.get("/", authenticate, async (req, res) => {
   try {
-    const { role, includeArchived } = req.query;
+    const { role } = req.query;
 
-    const where = { archivedAt: null };
+    const where = {};
 
     if (role) {
       where.role = role;
@@ -32,8 +32,7 @@ router.get("/", authenticate, async (req, res) => {
         fullName: true,
         phone: true,
         role: true,
-        active: true,
-        archivedAt: true,
+        isActive: true,
         createdAt: true
       },
       orderBy: {
@@ -138,8 +137,7 @@ router.patch("/:id/archive",
       await prisma.user.update({
         where: { id },
         data: {
-          archivedAt: archiveDate,
-          active: false
+          isActive: false
         }
       });
 
@@ -187,8 +185,7 @@ router.patch("/:id/restore",
       await prisma.user.update({
         where: { id },
         data: {
-          archivedAt: null,
-          active: true
+          isActive: true
         }
       });
 
@@ -418,8 +415,7 @@ router.post("/me/request-delete",
       await prisma.user.update({
         where: { id: req.user.id },
         data: {
-          archivedAt: deletionDate,
-          active: false
+          isActive: false
         }
       });
 

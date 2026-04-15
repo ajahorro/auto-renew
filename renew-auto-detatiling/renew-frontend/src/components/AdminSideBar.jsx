@@ -109,6 +109,7 @@ const AdminSidebar = ({ active }) => {
           <NavItem label="Dashboard" route="/admin" name="dashboard" />
           <NavItem label="Schedule" route="/admin/schedule" name="schedule" />
           <NavItem label="Booking Management" route="/admin/bookings" name="bookings" />
+          <NavItem label="Payment Verification" route="/admin/payments" name="payments" />
           <NavItem label="Notifications" route="/admin/notifications" name="notifications" />
         </div>
       </div>

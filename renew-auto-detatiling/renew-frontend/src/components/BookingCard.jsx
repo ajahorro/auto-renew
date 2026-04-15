@@ -17,8 +17,8 @@ const BookingCard = ({ booking, onCancel }) => {
   const total = booking.totalAmount || 0;
 
   const canCancel =
-    booking.status === "PENDING" ||
-    booking.status === "SCHEDULED";
+    booking.status === "pending" ||
+    booking.status === "scheduled";
 
   return(
 

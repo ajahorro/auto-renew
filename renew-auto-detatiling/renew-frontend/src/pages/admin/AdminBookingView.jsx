@@ -66,7 +66,7 @@ const AdminBookingView = () => {
     console.log(`Attempting to ${status} booking ${id}`);
     openConfirm("Update Status", `Change booking to ${status}?`, async () => {
       try {
-        if (status === "CANCELLED") {
+        if (status === "cancelled") {
           console.log(`Calling: /bookings/cancel/${id}`);
           const res = await API.patch(`/bookings/cancel/${id}`);
           console.log("Cancel response:", res.data);
@@ -129,12 +129,12 @@ const AdminBookingView = () => {
   if (loading) return <div style={styles.loadingArea}>Loading...</div>;
   if (!booking) return <div style={styles.loadingArea}>Booking not found.</div>;
 
-  const isLocked = ["COMPLETED", "CANCELLED"].includes(booking.status);
-  const canAssignStaff = !isLocked && ["PENDING", "SCHEDULED", "ONGOING"].includes(booking.status);
-  const canSchedule = !isLocked && booking.paymentStatus !== "UNPAID" && booking.assignedStaffId && booking.status === "PENDING";
-  const canStart = !isLocked && booking.status === "SCHEDULED";
-  const canComplete = !isLocked && booking.status === "ONGOING";
-  const canCancel = !isLocked && ["PENDING", "SCHEDULED"].includes(booking.status);
+  const isLocked = ["completed", "cancelled"].includes(booking.status);
+  const canAssignStaff = !isLocked && ["pending", "scheduled", "ongoing"].includes(booking.status);
+  const canSchedule = !isLocked && booking.paymentStatus !== "UNPAID" && booking.assignedStaffId && booking.status === "pending";
+  const canStart = !isLocked && booking.status === "scheduled";
+  const canComplete = !isLocked && booking.status === "ongoing";
+  const canCancel = !isLocked && ["pending", "scheduled"].includes(booking.status);
 
   const bookingItems = booking.items || [];
   const totalDuration = bookingItems.reduce((sum, item) => sum + (item.durationAtBooking || 0), 0);
@@ -158,8 +158,7 @@ const AdminBookingView = () => {
               <h3 style={styles.cardTitle}>Customer Details</h3>
               <div style={styles.infoRow}><strong>Name:</strong> {booking.customer?.fullName || "N/A"}</div>
               <div style={styles.infoRow}><strong>Email:</strong> {booking.customer?.email || "N/A"}</div>
-              <div style={styles.infoRow}><strong>Phone:</strong> {booking.customer?.phone || "N/A"}</div>
-              <div style={styles.infoRow}><strong>Contact:</strong> {booking.contactNumber || "N/A"}</div>
+              <div style={styles.infoRow}><strong>Contact Number:</strong> {booking.contactNumber || booking.customer?.phone || "N/A"}</div>
             </section>
 
             <section style={styles.card}>
@@ -243,7 +242,7 @@ const AdminBookingView = () => {
                 <option value="">Choose Staff Member</option>
                 {staff.map(s => <option key={s.id} value={s.id}>{s.fullName}</option>)}
               </select>
-              {!canAssignStaff && booking.status !== "ONGOING" && (
+              {!canAssignStaff && booking.status !== "ongoing" && (
                 <div style={styles.helperText}>
                   Staff can be assigned to PENDING, SCHEDULED, or ONGOING bookings only.
                 </div>
@@ -255,10 +254,10 @@ const AdminBookingView = () => {
         <footer style={styles.card}>
           <h3 style={styles.cardTitle}>Operations Control</h3>
           <div style={styles.actionRow}>
-            <button disabled={!canSchedule} onClick={() => updateStatus("SCHEDULED")} style={{...styles.greenBtn, opacity: canSchedule ? 1 : 0.4}}>Schedule</button>
-            <button disabled={!canStart} onClick={() => updateStatus("ONGOING")} style={{...styles.blueBtn, opacity: canStart ? 1 : 0.4}}>Start Wash</button>
-            <button disabled={!canComplete} onClick={() => updateStatus("COMPLETED")} style={{...styles.greenBtn, opacity: canComplete ? 1 : 0.4}}>Mark Complete</button>
-            <button disabled={!canCancel} onClick={() => updateStatus("CANCELLED")} style={{...styles.redBtn, opacity: canCancel ? 1 : 0.4}}>Cancel</button>
+            <button disabled={!canSchedule} onClick={() => updateStatus("scheduled")} style={{...styles.greenBtn, opacity: canSchedule ? 1 : 0.4}}>Schedule</button>
+            <button disabled={!canStart} onClick={() => updateStatus("ongoing")} style={{...styles.blueBtn, opacity: canStart ? 1 : 0.4}}>Start Wash</button>
+            <button disabled={!canComplete} onClick={() => updateStatus("completed")} style={{...styles.greenBtn, opacity: canComplete ? 1 : 0.4}}>Mark Complete</button>
+            <button disabled={!canCancel} onClick={() => updateStatus("cancelled")} style={{...styles.redBtn, opacity: canCancel ? 1 : 0.4}}>Cancel</button>
           </div>
         </footer>
 

@@ -151,12 +151,16 @@ const BookAppointment = () => {
       try {
         const formattedDate = formatLocalDate(date);
         const res = await API.get(`/bookings/availability?date=${formattedDate}`);
-        setSlots(res.data.slots || []);
+        console.log("Availability response:", res.data);
+        const data = res.data;
+        const slotList = data.slots || dataSlots || [];
+        console.log("Setting slots:", slotList);
+        setSlots(slotList);
         setTime((currentTime) =>
-          res.data.slots?.includes(currentTime) ? currentTime : ""
+          slotList.includes(currentTime) ? currentTime : ""
         );
       } catch (err) {
-        // toast.error is handled by axios interceptor
+        console.error("Failed to load slots:", err.response?.data || err.message);
         setSlots([]);
         setTime("");
       }
@@ -224,8 +228,26 @@ const totalAmount = selectedServices.reduce((sum, s) => sum + Number(s.price || 
 
     try {
       let appointmentStart = new Date(date);
-      const [hours, minutes] = time.split(":");
-      appointmentStart.setHours(parseInt(hours), parseInt(minutes), 0);
+      
+      // Parse time - slots come as "3:00 PM" format
+      const cleanTime = time.trim();
+      let hour = 0;
+      let minute = 0;
+      
+      if (cleanTime.includes(":")) {
+        // Extract hour and minute
+        const parts = cleanTime.replace(/(AM|PM)/i, "").split(":");
+        hour = parseInt(parts[0]);
+        minute = parseInt(parts[1]);
+        
+        // Handle AM/PM
+        if (cleanTime.toUpperCase().includes("PM") && hour < 12) hour += 12;
+        if (cleanTime.toUpperCase().includes("AM") && hour === 12) hour = 0;
+      }
+      
+      appointmentStart.setHours(hour, minute, 0, 0);
+
+      console.log("📤 Payload time:", { date, time, hour, minute, iso: appointmentStart.toISOString() });
 
       const payload = {
         services: selectedServices.map(s => Number(s.id)),
@@ -237,7 +259,7 @@ const totalAmount = selectedServices.reduce((sum, s) => sum + Number(s.price || 
         vehicleBrand, 
         vehicleModel, 
         notes,
-        totalPrice: totalAmount // Added this in case your backend needs the total
+        totalPrice: totalAmount
       };
 
       console.log("Submitting Payload:", payload);
