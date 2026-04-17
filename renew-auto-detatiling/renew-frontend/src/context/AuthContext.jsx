@@ -50,7 +50,9 @@ export const AuthProvider = ({ children }) => {
       email: userData.email,
       fullName: userData.fullName || userData.name,
       phone: userData.phone || "",
-      role: String(userData.role).toUpperCase()
+      role: String(userData.role).toUpperCase(),
+      notifyEmail: userData.notifyEmail ?? false,
+      notifyWeb: userData.notifyWeb ?? true
     };
 
     localStorage.setItem("token", token);

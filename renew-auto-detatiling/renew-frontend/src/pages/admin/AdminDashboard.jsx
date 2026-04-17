@@ -1,13 +1,12 @@
 import { useAuth } from "../../context/AuthContext";
 import API from "../../api/axios";
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import AdminSidebar from "../../components/AdminSidebar";
 
 const AdminDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   
   const [analytics, setAnalytics] = useState({
     totalBookings: 0,
@@ -38,7 +37,7 @@ const AdminDashboard = () => {
           if (counts) {
             setStatusCounts({
               PENDING: (counts.pending || 0) + (counts.pendingPayment || 0),
-              SCHEDULED: (counts.scheduled || 0) + (counts.confirmed || 0),
+              SCHEDULED: counts.scheduled || 0,
               ONGOING: counts.ongoing || 0,
               COMPLETED: counts.completed || 0,
               CANCELLED: counts.cancelled || 0
@@ -62,11 +61,7 @@ const AdminDashboard = () => {
           if (statusCounts[status] !== undefined) {
             statusCounts[status]++;
           }
-          // Also check legacy statuses
-          if (b.status === "pending_payment" || b.status === "partially_paid") {
-            statusCounts.PENDING++;
-          }
-          if (!b.assignedStaffId && !["cancelled", "completed"].includes(b.status)) {
+          if (!b.assignedStaffId && !["CANCELLED", "COMPLETED"].includes(b.status)) {
             unassignedList.push(b);
           }
         });
@@ -89,11 +84,12 @@ const AdminDashboard = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "pending": return "#facc15";
-      case "scheduled": return "#3b82f6";
-      case "ongoing": return "#a855f7";
-      case "completed": return "#22c55e";
-      case "cancelled": return "#ef4444";
+      case "PENDING": return "#facc15";
+      case "SCHEDULED": 
+      case "CONFIRMED": return "#3b82f6";
+      case "ONGOING": return "#a855f7";
+      case "COMPLETED": return "#22c55e";
+      case "CANCELLED": return "#ef4444";
       default: return "#64748b";
     }
   };
@@ -124,7 +120,7 @@ const AdminDashboard = () => {
             <h2 style={styles.cardValue}>{analytics.totalBookings}</h2>
             <p style={styles.cardHint}>Click to view all</p>
           </div>
-          <div style={styles.clickableCard} onClick={() => navigateToBookings("completed")}>
+          <div style={styles.clickableCard} onClick={() => navigateToBookings("COMPLETED")}>
             <p style={styles.cardLabel}>Completed</p>
             <h2 style={styles.cardValue}>{analytics.completedBookings}</h2>
             <p style={styles.cardHint}>Click to view completed</p>

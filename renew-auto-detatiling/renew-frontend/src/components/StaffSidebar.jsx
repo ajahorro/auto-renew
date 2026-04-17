@@ -4,6 +4,44 @@ import { AuthContext } from "../context/AuthContext";
 import { confirmAction } from "./ConfirmModal";
 import API from "../api/axios";
 
+// Move NavItem outside the component to avoid recreating it on each render
+const NavItem = ({ label, route, name, active, navigate, notifCount }) => {
+  const isActive = active === name;
+  return (
+    <div
+      onClick={() => route && navigate(route)}
+      style={{
+        padding: "12px 16px",
+        borderRadius: "8px",
+        marginBottom: "8px",
+        cursor: "pointer",
+        transition: "0.2s all ease",
+        position: "relative",
+        background: isActive ? "var(--bg-tertiary)" : "transparent",
+        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+        fontWeight: isActive ? "600" : "400",
+        borderLeft: isActive ? "4px solid var(--accent-yellow)" : "4px solid transparent"
+      }}
+    >
+      {label}
+      {name === "notifications" && notifCount > 0 && (
+        <span style={{
+          position: "absolute",
+          right: "16px",
+          top: "50%",
+          transform: "translateY(-50%)",
+          background: "var(--accent-red)",
+          color: "#fff",
+          borderRadius: "10px",
+          padding: "2px 8px",
+          fontSize: "10px",
+          fontWeight: "bold"
+        }}>{notifCount}</span>
+      )}
+    </div>
+  );
+};
+
 const StaffSidebar = ({ active }) => {
 
   const navigate = useNavigate();
@@ -15,7 +53,9 @@ const StaffSidebar = ({ active }) => {
       const res = await API.get("/notifications");
       const list = Array.isArray(res.data) ? res.data : res.data.notifications || [];
       setNotifCount(list.filter(n => !n.isRead).length);
-    } catch (err) { }
+    } catch {
+      // Silently fail for notification fetch
+    }
   };
 
   const logout = async () => {
@@ -44,43 +84,6 @@ const StaffSidebar = ({ active }) => {
     };
   }, []);
 
-  const NavItem = ({ label, route, name }) => {
-    const isActive = active === name;
-    return (
-      <div
-        onClick={() => route && navigate(route)}
-        style={{
-          padding: "12px 16px",
-          borderRadius: "8px",
-          marginBottom: "8px",
-          cursor: "pointer",
-          transition: "0.2s all ease",
-          position: "relative",
-          background: isActive ? "var(--bg-tertiary)" : "transparent",
-          color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-          fontWeight: isActive ? "600" : "400",
-          borderLeft: isActive ? "4px solid var(--accent-yellow)" : "4px solid transparent"
-        }}
-      >
-        {label}
-        {name === "notifications" && notifCount > 0 && (
-          <span style={{
-            position: "absolute",
-            right: "16px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            background: "var(--accent-red)",
-            color: "#fff",
-            borderRadius: "10px",
-            padding: "2px 8px",
-            fontSize: "10px",
-            fontWeight: "bold"
-          }}>{notifCount}</span>
-        )}
-      </div>
-    );
-  };
-
   return (
     <div style={{
       width: "260px",
@@ -106,9 +109,9 @@ const StaffSidebar = ({ active }) => {
           paddingLeft: "16px"
         }}>STAFF</div>
         <div style={{ flex: 1 }}>
-          <NavItem label="Dashboard" route="/staff" name="dashboard" />
-          <NavItem label="My Tasks" route="/staff/tasks" name="tasks" />
-          <NavItem label="Notifications" route="/staff/notifications" name="notifications" />
+          <NavItem label="Dashboard" route="/staff" name="dashboard" active={active} navigate={navigate} notifCount={notifCount} />
+          <NavItem label="My Tasks" route="/staff/tasks" name="tasks" active={active} navigate={navigate} notifCount={notifCount} />
+          <NavItem label="Notifications" route="/staff/notifications" name="notifications" active={active} navigate={navigate} notifCount={notifCount} />
         </div>
       </div>
 

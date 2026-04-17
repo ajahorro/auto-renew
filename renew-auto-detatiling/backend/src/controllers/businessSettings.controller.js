@@ -40,17 +40,27 @@ const updateSettings = async (req, res) => {
       closingHour,
       slotDurationMinutes,
       maxBookingsPerSlot,
-      maxServicesPerBooking
+      maxServicesPerBooking,
+      gcashNumber,
+      gcashName,
+      downpaymentThreshold,
+      downpaymentPercentage,
+      cancellationWindowHours
     } = req.body;
 
     const updated = await prisma.businessSettings.update({
       where: { id: 1 },
       data: {
-        openingHour: Number(openingHour),
-        closingHour: Number(closingHour),
-        slotDurationMinutes: Number(slotDurationMinutes),
-        maxBookingsPerSlot: Number(maxBookingsPerSlot),
-        maxServicesPerBooking: maxServicesPerBooking !== undefined ? Number(maxServicesPerBooking) : 5
+        openingHour: openingHour !== undefined ? Number(openingHour) : undefined,
+        closingHour: closingHour !== undefined ? Number(closingHour) : undefined,
+        slotDurationMinutes: slotDurationMinutes !== undefined ? Number(slotDurationMinutes) : undefined,
+        maxBookingsPerSlot: maxBookingsPerSlot !== undefined ? Number(maxBookingsPerSlot) : undefined,
+        maxServicesPerBooking: maxServicesPerBooking !== undefined ? Number(maxServicesPerBooking) : undefined,
+        gcashNumber: gcashNumber !== undefined ? gcashNumber : undefined,
+        gcashName: gcashName !== undefined ? gcashName : undefined,
+        downpaymentThreshold: downpaymentThreshold !== undefined ? Number(downpaymentThreshold) : undefined,
+        downpaymentPercentage: downpaymentPercentage !== undefined ? Number(downpaymentPercentage) : undefined,
+        cancellationWindowHours: cancellationWindowHours !== undefined ? Number(cancellationWindowHours) : undefined
       }
     });
 

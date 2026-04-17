@@ -1,19 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom"; 
-import { useAuth } from "../../context/AuthContext"; 
-import API from "../../api/axios"; 
+import { useParams } from "react-router-dom";
+import API from "../../api/axios";
 import AdminSidebar from "../../components/AdminSidebar";
 import ConfirmModal from "../../components/ConfirmModal";
 import toast from "react-hot-toast";
 
 const AdminBookingView = () => {
   const { id } = useParams();
-  const { user } = useAuth();
 
   const [booking, setBooking] = useState(null);
-  const [addonRequests, setAddonRequests] = useState([]);
   const [staff, setStaff] = useState([]);
-  const [services, setServices] = useState([]);
   const [paymentInput, setPaymentInput] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -26,18 +22,14 @@ const AdminBookingView = () => {
 
   const loadData = useCallback(async () => {
     try {
-      const [bookingRes, addonsRes, staffRes, servicesRes] = await Promise.all([
+      const [bookingRes, staffRes] = await Promise.all([
         API.get(`/bookings/${id}`),
-        API.get(`/bookings/${id}/addon-requests`),
-        API.get("/users?role=STAFF"),
-        API.get("/services")
+        API.get("/users?role=STAFF")
       ]);
 
       setBooking(bookingRes.data.booking || bookingRes.data);
-      setAddonRequests(addonsRes.data.addons || addonsRes.data || []);
       setStaff(staffRes.data.users || staffRes.data || []);
-      setServices(servicesRes.data.services || servicesRes.data || []);
-    } catch (err) {
+    } catch {
       toast.error("Error loading booking data");
     } finally {
       setLoading(false);
@@ -66,7 +58,7 @@ const AdminBookingView = () => {
     console.log(`Attempting to ${status} booking ${id}`);
     openConfirm("Update Status", `Change booking to ${status}?`, async () => {
       try {
-        if (status === "cancelled") {
+        if (status === "CANCELLED") {
           console.log(`Calling: /bookings/cancel/${id}`);
           const res = await API.patch(`/bookings/cancel/${id}`);
           console.log("Cancel response:", res.data);
@@ -106,15 +98,6 @@ const AdminBookingView = () => {
     });
   };
 
-  const approveAddon = (addonId) => {
-    openConfirm("Approve Add-on", "This will update the total price. Proceed?", async () => {
-      try {
-        await API.patch(`/bookings/addon-requests/${addonId}/approve`);
-        toast.success("Add-on approved");
-        loadData();
-      } catch (err) { }
-    });
-  };
 
   const addPayment = async () => {
     if (!paymentInput || isNaN(paymentInput)) return toast.error("Enter a valid amount");
@@ -123,18 +106,21 @@ const AdminBookingView = () => {
       toast.success("Payment recorded");
       setPaymentInput("");
       loadData();
-    } catch (err) { }
+    } catch (err) {
+      console.error("Add payment error:", err);
+      toast.error("Failed to record payment");
+    }
   };
 
   if (loading) return <div style={styles.loadingArea}>Loading...</div>;
   if (!booking) return <div style={styles.loadingArea}>Booking not found.</div>;
 
-  const isLocked = ["completed", "cancelled"].includes(booking.status);
-  const canAssignStaff = !isLocked && ["pending", "scheduled", "ongoing"].includes(booking.status);
-  const canSchedule = !isLocked && booking.paymentStatus !== "UNPAID" && booking.assignedStaffId && booking.status === "pending";
-  const canStart = !isLocked && booking.status === "scheduled";
-  const canComplete = !isLocked && booking.status === "ongoing";
-  const canCancel = !isLocked && ["pending", "scheduled"].includes(booking.status);
+  const isLocked = ["COMPLETED", "CANCELLED"].includes(booking.status);
+  const canAssignStaff = !isLocked && ["PENDING", "SCHEDULED", "ONGOING"].includes(booking.status);
+  const canSchedule = !isLocked && booking.paymentStatus !== "PENDING" && booking.assignedStaffId && booking.status === "PENDING";
+  const canStart = !isLocked && booking.status === "SCHEDULED";
+  const canComplete = !isLocked && booking.status === "ONGOING";
+  const canCancel = !isLocked && ["PENDING", "SCHEDULED"].includes(booking.status);
 
   const bookingItems = booking.items || [];
   const totalDuration = bookingItems.reduce((sum, item) => sum + (item.durationAtBooking || 0), 0);
@@ -254,10 +240,10 @@ const AdminBookingView = () => {
         <footer style={styles.card}>
           <h3 style={styles.cardTitle}>Operations Control</h3>
           <div style={styles.actionRow}>
-            <button disabled={!canSchedule} onClick={() => updateStatus("scheduled")} style={{...styles.greenBtn, opacity: canSchedule ? 1 : 0.4}}>Schedule</button>
-            <button disabled={!canStart} onClick={() => updateStatus("ongoing")} style={{...styles.blueBtn, opacity: canStart ? 1 : 0.4}}>Start Wash</button>
-            <button disabled={!canComplete} onClick={() => updateStatus("completed")} style={{...styles.greenBtn, opacity: canComplete ? 1 : 0.4}}>Mark Complete</button>
-            <button disabled={!canCancel} onClick={() => updateStatus("cancelled")} style={{...styles.redBtn, opacity: canCancel ? 1 : 0.4}}>Cancel</button>
+            <button disabled={!canSchedule} onClick={() => updateStatus("SCHEDULED")} style={{...styles.greenBtn, opacity: canSchedule ? 1 : 0.4}}>Schedule</button>
+            <button disabled={!canStart} onClick={() => updateStatus("ONGOING")} style={{...styles.blueBtn, opacity: canStart ? 1 : 0.4}}>Start Wash</button>
+            <button disabled={!canComplete} onClick={() => updateStatus("COMPLETED")} style={{...styles.greenBtn, opacity: canComplete ? 1 : 0.4}}>Mark Complete</button>
+            <button disabled={!canCancel} onClick={() => updateStatus("CANCELLED")} style={{...styles.redBtn, opacity: canCancel ? 1 : 0.4}}>Cancel</button>
           </div>
         </footer>
 

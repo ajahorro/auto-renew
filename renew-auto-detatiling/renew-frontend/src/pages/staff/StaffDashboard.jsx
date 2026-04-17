@@ -21,8 +21,16 @@ const StaffDashboard = () => {
     try {
       const res = await API.get("/bookings");
       const data = res.data;
-      const list = Array.isArray(data) ? data : (data.bookings || []);
-      setBookings(list);
+      const allBookings = Array.isArray(data) ? data : (data.bookings || []);
+      // Staff should only see CONFIRMED bookings to work on
+      // After service they can see ONGOING to complete
+      // After completion they see COMPLETED
+      const filtered = allBookings.filter(b => 
+        b.status === "CONFIRMED" || 
+        b.status === "SCHEDULED" ||
+        b.status === "ONGOING"
+      );
+      setBookings(filtered);
     } catch (err) {
       console.log("Staff bookings error", err);
     } finally {
@@ -89,8 +97,8 @@ const StaffDashboard = () => {
     });
   };
 
-  const activeBookings = bookings.filter(b => b.status !== "completed" && b.status !== "cancelled");
-  const completedBookings = bookings.filter(b => b.status === "completed" || b.status === "cancelled");
+  const activeBookings = bookings.filter(b => b.status !== "COMPLETED" && b.status !== "CANCELLED");
+  const completedBookings = bookings.filter(b => b.status === "COMPLETED" || b.status === "CANCELLED");
 
   // Get bookings for schedule view
   const getScheduleBookings = () => {
@@ -374,27 +382,27 @@ const StaffDashboard = () => {
                         </div>
 
                         <div style={styles.actionRow}>
-                          {b.status === "scheduled" && (
+                          {b.status === "SCHEDULED" && (
                             <button
                               style={styles.startBtn}
                               disabled={updatingId === b.id}
-                              onClick={() => updateStatus(b.id, "ongoing")}
+                              onClick={() => updateStatus(b.id, "ONGOING")}
                             >
                               {updatingId === b.id ? "Updating..." : "Start Service"}
                             </button>
                           )}
 
-                          {b.status === "ongoing" && (
+                          {b.status === "ONGOING" && (
                             <button
                               style={styles.completeBtn}
                               disabled={updatingId === b.id}
-                              onClick={() => updateStatus(b.id, "completed")}
+                              onClick={() => updateStatus(b.id, "COMPLETED")}
                             >
                               {updatingId === b.id ? "Updating..." : "Mark Completed"}
                             </button>
                           )}
 
-                          {(b.status === "pending" || b.status === "scheduled") && (
+                          {(b.status === "CONFIRMED" || b.status === "SCHEDULED") && (
                             <button
                               style={styles.cancelBtn}
                               disabled={updatingId === b.id}

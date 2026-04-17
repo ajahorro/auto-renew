@@ -35,7 +35,7 @@ const AdminServices = () => {
         ...(res.data.services?.specialized || [])
       ];
       setServices(list);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load services");
     } finally {
       setLoading(false);
@@ -67,7 +67,7 @@ const AdminServices = () => {
       toast.success("New service added!");
       setFormData({ name: "", description: "", category: "EXTERIOR", price: "", durationMin: "" });
       loadServices();
-    } catch (err) {
+    } catch {
       toast.error("Failed to create service");
     }
   };
@@ -90,7 +90,7 @@ const AdminServices = () => {
       await API.delete(`/services/${id}`);
       toast.success("Service removed");
       loadServices();
-    } catch (err) {
+    } catch {
       toast.error("Cannot delete service (it may be linked to existing bookings)");
     }
   };

@@ -1,11 +1,11 @@
 const jwt = require("jsonwebtoken");
+const prisma = require("../config/prisma");
 
 /* AUTHENTICATION MIDDLEWARE */
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
-    // Check if the "Bearer <token>" header exists
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
@@ -28,14 +28,39 @@ const authenticate = (req, res, next) => {
       });
     }
 
-// Change Number(decoded.id) to String(decoded.id)
-req.user = {
-  id: String(decoded.id), 
-  email: decoded.email,
-  role: decoded.role ? String(decoded.role).toUpperCase() : "CUSTOMER"
-};
+    const user = await prisma.user.findUnique({
+      where: { id: String(decoded.id) },
+      select: { id: true, email: true, role: true, isActive: true, archivedAt: true }
+    });
 
-    next(); // Pass control to the next function (RBAC or Controller)
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not found. Please login again."
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Account is deactivated. Contact admin for support."
+      });
+    }
+
+    if (user.archivedAt) {
+      return res.status(403).json({
+        success: false,
+        message: "Account has been archived. Contact admin for support."
+      });
+    }
+
+    req.user = {
+      id: String(decoded.id),
+      email: decoded.email,
+      role: decoded.role ? String(decoded.role).toUpperCase() : "CUSTOMER"
+    };
+
+    next();
 
   } catch (error) {
     console.error("AUTH ERROR:", error.message);

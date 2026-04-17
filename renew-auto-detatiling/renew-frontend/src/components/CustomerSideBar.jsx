@@ -3,6 +3,28 @@ import { useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { confirmAction } from "./ConfirmModal";
 
+// Move NavItem outside the component to avoid recreating it on each render
+const NavItem = ({ label, route, name, active, navigate }) => {
+  const isActive = active === name;
+  return (
+    <div
+      onClick={() => route && navigate(route)}
+      style={{
+        padding: "12px 16px",
+        borderRadius: "10px",
+        marginBottom: "6px",
+        cursor: "pointer",
+        transition: "0.2s",
+        background: isActive ? "var(--bg-tertiary)" : "transparent",
+        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+        fontWeight: isActive ? "600" : "400"
+      }}
+    >
+      {label}
+    </div>
+  );
+};
+
 const CustomerSidebar = ({ active }) => {
 
   const navigate = useNavigate();
@@ -22,27 +44,6 @@ const CustomerSidebar = ({ active }) => {
     contextLogout();
     navigate("/login");
 
-  };
-
-  const NavItem = ({ label, route, name }) => {
-    const isActive = active === name;
-    return (
-      <div
-        onClick={() => route && navigate(route)}
-        style={{
-          padding: "12px 16px",
-          borderRadius: "10px",
-          marginBottom: "6px",
-          cursor: "pointer",
-          transition: "0.2s",
-          background: isActive ? "var(--bg-tertiary)" : "transparent",
-          color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-          fontWeight: isActive ? "600" : "400"
-        }}
-      >
-        {label}
-      </div>
-    );
   };
 
   return (
@@ -71,10 +72,10 @@ const CustomerSidebar = ({ active }) => {
       </div>
 
       <div style={{ flex: 1 }}>
-        <NavItem label="Dashboard" route="/customer" name="dashboard" />
-        <NavItem label="Book Appointment" route="/customer/book" name="book" />
-        <NavItem label="My Bookings" route="/customer/bookings" name="bookings" />
-        <NavItem label="Notifications" route="/customer/notifications" name="notifications" />
+        <NavItem label="Dashboard" route="/customer" name="dashboard" active={active} navigate={navigate} />
+        <NavItem label="Book Appointment" route="/customer/book" name="book" active={active} navigate={navigate} />
+        <NavItem label="My Bookings" route="/customer/bookings" name="bookings" active={active} navigate={navigate} />
+        <NavItem label="Notifications" route="/customer/notifications" name="notifications" active={active} navigate={navigate} />
       </div>
 
       <div style={{ marginTop: "auto" }}>

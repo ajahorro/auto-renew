@@ -15,7 +15,7 @@ const AdminCustomers = () => {
 
     loadCustomers();
 
-  },[]);
+  },[token]);
 
   /* LOAD CUSTOMERS */
 

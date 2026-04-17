@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import BillingPanel from "./BillingPanel";
 import StaffAssignPanel from "./StaffAssignPanel";
 import API from "../api/axios"; // Consistent API utility
 import { useAuth } from "../context/AuthContext";
-import { confirmAction } from "./ConfirmModal";
 
 const BookingDetailsModal = ({ booking, close, refresh }) => {
   const { user } = useAuth();
@@ -21,7 +20,7 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
     }
   };
 
-  const loadServices = async () => {
+  const loadServices = useCallback(async () => {
     try {
       const res = await API.get("/services");
       const allServices = [
@@ -33,19 +32,15 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
     } catch (err) {
       console.error("Failed loading services", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    setBookingData(booking);
     loadServices();
-  }, [booking]);
+  }, [loadServices]);
 
   if (!bookingData) return null;
 
   const hasAssignedStaff = bookingData.assignedStaffId || bookingData.assignedStaff?.id;
-  const totalAmount = Number(bookingData.totalAmount || 0);
-  const amountPaid = Number(bookingData.amountPaid || 0);
-  const remainingBalance = totalAmount - amountPaid;
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
   /* ACTIONS */
@@ -71,22 +66,6 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
     }
   };
 
-  const completeService = async () => {
-    if (remainingBalance > 0) {
-      const confirmed = await confirmAction({
-        title: "Complete with Balance",
-        message: `Remaining balance: ₱${remainingBalance}. Mark as paid?`,
-        confirmText: "Yes, Mark Paid",
-        cancelText: "Cancel",
-        type: "warning"
-      });
-      
-      if (!confirmed) return;
-      
-      await API.patch(`/bookings/${bookingData.id}/payment`, { amount: remainingBalance, method: "CASH" });
-    }
-    updateStatus("completed", "Service completed!");
-  };
 
   return (
     <div style={styles.overlay}>

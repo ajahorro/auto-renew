@@ -19,8 +19,14 @@ const StaffTasks = () => {
     try {
       const res = await API.get("/bookings");
       const data = res.data;
-      const list = Array.isArray(data) ? data : (data.bookings || []);
-      setBookings(list);
+      const allBookings = Array.isArray(data) ? data : (data.bookings || []);
+      // Staff should only see CONFIRMED/SCHEDULED/ONGOING bookings per spec
+      const filtered = allBookings.filter(b => 
+        b.status === "CONFIRMED" || 
+        b.status === "SCHEDULED" ||
+        b.status === "ONGOING"
+      );
+      setBookings(filtered);
     } catch (err) {
       console.log("Staff bookings error", err);
     } finally {
@@ -88,8 +94,8 @@ const StaffTasks = () => {
   };
 
   const filteredBookings = bookings.filter(b => {
-    if (filter === "active") return b.status !== "completed" && b.status !== "cancelled";
-    if (filter === "completed") return b.status === "completed" || b.status === "cancelled";
+    if (filter === "active") return b.status !== "COMPLETED" && b.status !== "CANCELLED";
+    if (filter === "completed") return b.status === "COMPLETED" || b.status === "CANCELLED";
     return true;
   });
 
@@ -290,13 +296,14 @@ const StaffTasks = () => {
             {filteredBookings.map(b => {
               const services = b.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ") || "No services";
               const total = b.items?.reduce((sum,i)=>sum + Number(i.priceAtBooking || 0), 0) || 0;
-              const isReadOnly = b.status === "completed" || b.status === "cancelled";
-              
+              const statusLabel = b.status?.toLowerCase() || "";
+              const isReadOnly = b.status === "COMPLETED" || b.status === "CANCELLED";
+               
               return(
                 <div key={b.id} style={{...styles.card, opacity: isReadOnly ? 0.8 : 1}}>
                   <div style={styles.cardHeader}>
                     <span style={{...styles.statusBadge, background: getStatusColor(b.status)}}>
-                      {b.status}
+                      {statusLabel}
                     </span>
                     <span style={styles.bookingId}>#{b.id}</span>
                   </div>
@@ -306,14 +313,9 @@ const StaffTasks = () => {
                     <p style={styles.customerName}>{b.customer?.fullName || "N/A"}</p>
                   </div>
 
-                  <div style={{marginBottom: "8px"}}>
-                    <p style={styles.label}>Date & Time</p>
-                    <p style={styles.value}>{formatDate(b.appointmentStart)}</p>
-                  </div>
-
-                  <div style={{marginBottom: "8px"}}>
+                  <div style={{marginBottom: "12px"}}>
                     <p style={styles.label}>Vehicle</p>
-                    <p style={styles.value}>{b.vehicleType || "N/A"} - {b.plateNumber || "N/A"}</p>
+                    <p style={styles.vehicleInfo}>{b.vehicleType} - {b.plateNumber}</p>
                   </div>
 
                   <div style={{marginBottom: "12px"}}>
@@ -321,34 +323,43 @@ const StaffTasks = () => {
                     <p style={styles.services}>{services}</p>
                   </div>
 
-                  <div style={styles.totalRow}>
-                    <span>Total:</span>
-                    <span style={styles.totalAmount}>₱{total.toLocaleString()}</span>
+                  <div style={{marginBottom: "12px"}}>
+                    <p style={styles.label}>Total Amount</p>
+                    <p style={styles.amount}>₱{total.toLocaleString()}</p>
                   </div>
 
-                  {!isReadOnly ? (
+                  <div style={{marginBottom: "12px"}}>
+                    <p style={styles.label}>Appointment</p>
+                    <p style={styles.appointment}>{formatDate(b.appointmentStart)}</p>
+                  </div>
+
+                  {isReadOnly ? (
+                    <p style={styles.readOnly}>
+                      This booking is {b.status.toLowerCase()}
+                    </p>
+                  ) : (
                     <div style={styles.actionRow}>
-                      {b.status === "scheduled" && (
+                      {b.status === "SCHEDULED" && (
                         <button
                           style={styles.startBtn}
                           disabled={updatingId === b.id}
-                          onClick={() => updateStatus(b.id, "ongoing")}
+                          onClick={() => updateStatus(b.id, "ONGOING")}
                         >
                           {updatingId === b.id ? "Updating..." : "Start Service"}
                         </button>
                       )}
 
-                      {b.status === "ongoing" && (
+                      {b.status === "ONGOING" && (
                         <button
                           style={styles.completeBtn}
                           disabled={updatingId === b.id}
-                          onClick={() => updateStatus(b.id, "completed")}
+                          onClick={() => updateStatus(b.id, "COMPLETED")}
                         >
                           {updatingId === b.id ? "Updating..." : "Mark Completed"}
                         </button>
                       )}
 
-                      {(b.status === "pending" || b.status === "scheduled") && (
+                      {(b.status === "CONFIRMED" || b.status === "SCHEDULED") && (
                         <button
                           style={styles.cancelBtn}
                           disabled={updatingId === b.id}
@@ -358,10 +369,6 @@ const StaffTasks = () => {
                         </button>
                       )}
                     </div>
-                  ) : (
-                    <p style={styles.readOnly}>
-                      This booking is {b.status.toLowerCase()}
-                    </p>
                   )}
                 </div>
               );

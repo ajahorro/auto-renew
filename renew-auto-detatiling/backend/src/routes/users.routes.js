@@ -271,6 +271,8 @@ router.get("/me",
           email: true,
           phone: true,
           role: true,
+          notifyEmail: true,
+          notifyWeb: true,
           createdAt: true
         }
       });
@@ -305,14 +307,16 @@ router.patch("/me",
 
     try {
 
-      const { fullName, phone } = req.body;
+      const { fullName, phone, notifyEmail, notifyWeb } = req.body;
+
+      const updateData = { fullName, phone };
+      
+      if (notifyEmail !== undefined) updateData.notifyEmail = notifyEmail;
+      if (notifyWeb !== undefined) updateData.notifyWeb = notifyWeb;
 
       const updated = await prisma.user.update({
         where: { id: req.user.id },
-        data: {
-          fullName,
-          phone
-        }
+        data: updateData
       });
 
       res.json({

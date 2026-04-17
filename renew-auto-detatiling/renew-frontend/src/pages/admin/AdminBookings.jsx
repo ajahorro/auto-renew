@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext"; 
 import API from "../../api/axios";
 import AdminSidebar from "../../components/AdminSidebar";
 
@@ -140,34 +139,17 @@ filter:{
 }
 
     };
+
 const AdminBookings = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [bookings, setBookings] = useState([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
-  const [staff, setStaff] = useState([]);
-
-  // This logic is excellent - keep it as is!
-  const canUpdate = (currentStatus, action) => {
-    if (currentStatus === "cancelled" || currentStatus === "completed") {
-      return false;
-    }
-    if (action === "scheduled") return currentStatus === "pending";
-    if (action === "completed") return currentStatus === "ongoing";
-    if (action === "cancelled") return currentStatus === "pending" || currentStatus === "scheduled";
-    return false;
-  };
-
-  useEffect(() => {
-    loadBookings();
-    loadStaff();
-  }, []);
 
   /* LOAD BOOKINGS */
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async () => {
     try {
       const res = await API.get("/bookings");
       
@@ -180,7 +162,11 @@ const AdminBookings = () => {
     } catch (err) {
       console.error("Bookings load error", err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadBookings();
+  }, [loadBookings]);
 
   /* HANDLE STATUS FILTER CHANGE */
   const handleStatusChange = (status) => {
@@ -192,85 +178,23 @@ const AdminBookings = () => {
     }
   };
 
-/* LOAD STAFF */
-  const loadStaff = async () => {
-    try {
-      // Using API.get with the role filter
-      const res = await API.get("/users?role=STAFF");
-      
-      // Supporting both direct arrays and nested 'users' objects
-      const list = Array.isArray(res.data) 
-        ? res.data 
-        : (res.data.users || []);
-        
-      setStaff(list);
-    } catch (err) {
-      console.error("Staff load error", err);
-    }
-  };
-
-  /* ASSIGN STAFF */
-  const assignStaff = async (bookingId, assignedStaffId) => {
-    if (!assignedStaffId) return;
-
-    try {
-      // Using API.patch for a cleaner request
-      await API.patch(`/bookings/${bookingId}/assign`, {
-        assignedStaffId
-      });
-
-      // Refresh the list so the UI shows the new assignment immediately
-      loadBookings();
-    } catch (err) {
-      console.error("Assign staff error", err);
-    }
-  };
-/* REQUEST DOWNPAYMENT */
-  const requestDownpayment = async (bookingId) => {
-    try {
-      await API.post(`/bookings/${bookingId}/request-downpayment`);
-      loadBookings();
-    } catch (err) {
-      console.error("Downpayment request error", err);
-    }
-  };
-
-  /* MARK DOWNPAYMENT PAID */
-  const markDownpaymentPaid = async (bookingId) => {
-    try {
-      await API.patch(`/bookings/${bookingId}/confirm-downpayment`);
-      loadBookings();
-    } catch (err) {
-      console.error("Confirm DP error", err);
-    }
-  };
-
-/* UPDATE STATUS */
-  const updateStatus = async (bookingId, status) => {
-    try {
-      await API.patch(`/bookings/${bookingId}/status`, { status });
-      loadBookings();
-    } catch (err) {
-      console.error("Status update error", err);
-    }
-  };
-
   const getStatusColor = (status) => {
     switch (status) {
-      case "pending": return "#facc15";
-      case "scheduled": return "#3b82f6";
-      case "ongoing": return "#a855f7";
-      case "completed": return "#22c55e";
-      case "cancelled": return "#ef4444";
+      case "PENDING": return "#facc15";
+      case "SCHEDULED": 
+      case "CONFIRMED": return "#3b82f6";
+      case "ONGOING": return "#a855f7";
+      case "COMPLETED": return "#22c55e";
+      case "CANCELLED": return "#ef4444";
       default: return "#64748b";
     }
   };
 
   const getPaymentColor = (payment) => {
     switch (payment) {
-      case "PAID": return "#22c55e";
-      case "PARTIALLY_PAID": return "#3b82f6";
-      case "UNPAID": return "#ef4444";
+      case "COMPLETED": return "#22c55e";
+      case "APPROVED": return "#3b82f6";
+      case "PENDING": return "#ef4444";
       default: return "#64748b";
     }
   };
@@ -309,11 +233,11 @@ return (
             onChange={(e) => handleStatusChange(e.target.value)}
           >
             <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="scheduled">Scheduled</option>
-            <option value="ongoing">Ongoing</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
+            <option value="PENDING">Pending</option>
+            <option value="SCHEDULED">Scheduled</option>
+            <option value="ONGOING">Ongoing</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="CANCELLED">Cancelled</option>
           </select>
         </div>
 

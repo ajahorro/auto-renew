@@ -1,121 +1,70 @@
 const prisma = require("../config/prisma");
 
 async function sendBookingReminders() {
+  try {
+    const now = new Date();
+    const oneHourLater = new Date(now.getTime() + 60 * 60000);
 
-  const now = new Date();
+    const todayStart = new Date();
+    todayStart.setHours(0,0,0,0);
 
-  const oneHourLater = new Date(now.getTime() + 60 * 60000);
+    const todayEnd = new Date();
+    todayEnd.setHours(23,59,59,999);
 
-  const todayStart = new Date();
-  todayStart.setHours(0,0,0,0);
-
-  const todayEnd = new Date();
-  todayEnd.setHours(23,59,59,999);
-
-  /*
-  SAME DAY REMINDERS
-  */
-
-  const sameDayBookings = await prisma.booking.findMany({
-
-    where: {
-
-      appointmentStart: {
-        gte: todayStart,
-        lte: todayEnd
+    const sameDayBookings = await prisma.booking.findMany({
+      where: {
+        appointmentStart: {
+          gte: todayStart,
+          lte: todayEnd
+        },
+        status: {
+          in: ["CONFIRMED", "ONGOING"]
+        }
       },
-
-      sameDayReminderSent: false,
-
-      status: {
-        in: ["scheduled"]
+      include: {
+        customer: true
       }
+    });
 
-    },
-
-    include: {
-      customer: true
+    for (const booking of sameDayBookings) {
+      await prisma.notification.create({
+        data: {
+          userId: booking.customerId,
+          title: "Appointment Today",
+          message: `Reminder: You have an appointment today at ${new Date(booking.appointmentStart).toLocaleTimeString()}.`,
+          type: "BOOKING_REMINDER"
+        }
+      });
     }
 
-  });
-
-  for (const booking of sameDayBookings) {
-
-    await prisma.notification.create({
-
-      data: {
-
-        userId: booking.customerId,
-
-        title: "Appointment Today",
-
-        message: `Reminder: You have an appointment today at ${booking.appointmentStart.toLocaleTimeString()}.`,
-
-        type: "BOOKING_REMINDER"
-
-      }
-
-    });
-
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: { sameDayReminderSent: true }
-    });
-
-  }
-
-  /*
-  ONE HOUR REMINDERS
-  */
-
-  const oneHourBookings = await prisma.booking.findMany({
-
-    where: {
-
-      appointmentStart: {
-        gte: now,
-        lte: oneHourLater
+    const oneHourBookings = await prisma.booking.findMany({
+      where: {
+        appointmentStart: {
+          gte: now,
+          lte: oneHourLater
+        },
+        status: {
+          in: ["CONFIRMED"]
+        }
       },
-
-      oneHourReminderSent: false,
-
-      status: {
-        in: ["scheduled"]
+      include: {
+        customer: true
       }
+    });
 
-    },
-
-    include: {
-      customer: true
+    for (const booking of oneHourBookings) {
+      await prisma.notification.create({
+        data: {
+          userId: booking.customerId,
+          title: "Appointment in 1 Hour",
+          message: `Your appointment starts at ${new Date(booking.appointmentStart).toLocaleTimeString()}.`,
+          type: "BOOKING_REMINDER"
+        }
+      });
     }
-
-  });
-
-  for (const booking of oneHourBookings) {
-
-    await prisma.notification.create({
-
-      data: {
-
-        userId: booking.customerId,
-
-        title: "Appointment in 1 Hour",
-
-        message: `Your appointment starts at ${booking.appointmentStart.toLocaleTimeString()}.`,
-
-        type: "BOOKING_REMINDER"
-
-      }
-
-    });
-
-    await prisma.booking.update({
-      where: { id: booking.id },
-      data: { oneHourReminderSent: true }
-    });
-
+  } catch (error) {
+    console.error("Booking reminders error:", error);
   }
-
 }
 
 module.exports = sendBookingReminders;

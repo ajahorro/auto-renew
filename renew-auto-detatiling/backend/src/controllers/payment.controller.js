@@ -1,10 +1,14 @@
 const prisma = require("../config/prisma");
 const path = require("path");
 const fs = require("fs");
+const { sendEmail } = require("../services/email.service");
 
-/* ============================
-   HELPER: Create audit log
-   ============================ */
+const LOG_REQUEST = (req, context) => {
+  console.log(`[${context}] Request Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[${context}] Request Params:`, JSON.stringify(req.params, null, 2));
+  console.log(`[${context}] Request Query:`, JSON.stringify(req.query, null, 2));
+};
+
 const createAuditLog = async (userId, action, entityType, entityId, oldValue, newValue) => {
   try {
     await prisma.auditLog.create({
@@ -22,9 +26,45 @@ const createAuditLog = async (userId, action, entityType, entityId, oldValue, ne
   }
 };
 
-/* ============================
-    HELPER: Notify admins
-    ============================ */
+const createNotification = async (userId, data) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, notifyEmail: true, notifyWeb: true }
+    });
+
+    if (!user) return null;
+
+    const hasWeb = user.notifyWeb !== false;
+    const hasEmail = user.notifyEmail !== false;
+
+    if (!hasWeb && !hasEmail) return null;
+
+    if (hasWeb) {
+      await prisma.notification.create({
+        data: {
+          userId,
+          title: data.title,
+          message: data.message,
+          type: data.type || "GENERAL",
+          actionType: data.actionType,
+          actorId: data.actorId,
+          actorName: data.actorName,
+          targetId: data.targetId,
+          targetName: data.targetName
+        }
+      });
+    }
+
+    if (hasEmail && user.email) {
+      const emailHtml = `<div style="font-family: Arial; max-width: 600px;"><h2 style="color: #1e40af;">${data.title}</h2><p>${data.message}</p></div>`;
+      sendEmail(user.email, `[RENEW] ${data.title}`, emailHtml).catch(() => {});
+    }
+  } catch (error) {
+    console.error("Notification error:", error);
+  }
+};
+
 const notifyAdmins = async (data) => {
   try {
     const admins = await prisma.user.findMany({
@@ -38,132 +78,149 @@ const notifyAdmins = async (data) => {
   }
 };
 
-/* ============================
-    HELPER: Notify user
-    ============================ */
-const createNotification = async (userId, data) => {
+const createPayment = async (req, res) => {
   try {
-    await prisma.notification.create({
-      data: {
-        userId,
-        title: data.title,
-        message: data.message,
-        type: data.type || "GENERAL",
-        actionType: data.actionType,
-        actorId: data.actorId,
-        actorName: data.actorName,
-        targetId: data.targetId,
-        targetName: data.targetName
-      }
-    });
-  } catch (error) {
-    console.error("Notification error:", error);
-  }
-};
-
-/* ============================
-   CREATE PAYMENT (CUSTOMER)
-   ============================ */
-const createPayment = async (req, res, next) => {
-  try {
+    LOG_REQUEST(req, "CREATE_PAYMENT");
+    
     const userId = req.user?.id ? String(req.user.id) : null;
     
     if (!userId) {
       return res.status(401).json({ success: false, message: "Invalid user token" });
     }
 
-    const { bookingId, method } = req.body;
+    const { bookingId, method, paymentType } = req.body;
 
     if (!bookingId) {
       return res.status(400).json({ success: false, message: "Booking ID required" });
     }
 
-    // Validate booking
+    const validMethods = ["GCASH", "CASH", "GCASH_POST_SERVICE"];
+    if (!validMethods.includes(method)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Payment method must be one of: ${validMethods.join(", ")}` 
+      });
+    }
+
     const booking = await prisma.booking.findFirst({
       where: {
         id: Number(bookingId),
         customerId: userId
-      },
-      include: { items: true }
+      }
     });
 
     if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
-    // Check booking status
-    if (!["pending_payment", "partially_paid"].includes(booking.status)) {
+    const isPostServicePayment = method === "GCASH_POST_SERVICE" || booking.status === "COMPLETED";
+    
+    if (!["PENDING", "CONFIRMED", "COMPLETED"].includes(booking.status)) {
       return res.status(400).json({
         success: false,
         message: `Cannot add payment. Booking status: ${booking.status}`
       });
     }
 
-    // Calculate remaining balance
+    if (isPostServicePayment && method !== "GCASH" && method !== "GCASH_POST_SERVICE") {
+      return res.status(400).json({
+        success: false,
+        message: "Post-service payments can only be made via GCash"
+      });
+    }
+
     const remainingBalance = Number(booking.totalAmount) - Number(booking.amountPaid);
     
-    if (remainingBalance <= 0) {
+    if (remainingBalance <= 0 && method !== "GCASH_POST_SERVICE") {
       return res.status(400).json({
         success: false,
         message: "Booking is already fully paid"
       });
     }
 
-    // Handle file upload if GCash
-    let receiptImage = null;
-    if (method === "GCASH" && req.file) {
-      receiptImage = `/uploads/${req.file.filename}`;
+    let proofImage = null;
+    const requiresProof = method === "GCASH" || method === "GCASH_POST_SERVICE";
+    
+    if (requiresProof) {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "GCash receipt/proof image is required"
+        });
+      }
+      proofImage = `/uploads/${req.file.filename}`;
     }
 
-    // Create payment record
+    const isPostService = method === "GCASH_POST_SERVICE" || (booking.status === "COMPLETED" && requiresProof);
+    const status = isPostService || method === "GCASH" ? "PENDING" : "APPROVED";
+    const type = paymentType || (Number(booking.totalAmount) >= 5000 && Number(booking.amountPaid) === 0 ? "DOWNPAYMENT" : "FULL");
+    const amount = type === "DOWNPAYMENT" 
+      ? Number(booking.totalAmount) * 0.5 
+      : remainingBalance;
+
+    const finalMethod = isPostService ? "GCASH_POST_SERVICE" : method;
+
     const payment = await prisma.payment.create({
       data: {
         bookingId: booking.id,
-        amount: remainingBalance, // Default to remaining balance
-        method: method || "CASH",
-        status: method === "GCASH" ? "pending" : "verified", // CASH is auto-verified
-        receiptImage
+        amount,
+        method: finalMethod,
+        status,
+        paymentType: type,
+        createdBy: "CUSTOMER",
+        proofImage
       }
     });
 
-    // For CASH payments, immediately update booking
-    if (method === "CASH" || method === "MANUAL") {
-      await updateBookingPaymentStatus(booking.id, remainingBalance);
+    if (method === "CASH" && !isPostService) {
+      await updateBookingPaymentStatus(booking.id, amount);
     }
 
-    // Notify admins about the payment
+    if (isPostService) {
+      await prisma.notification.create({
+        data: {
+          userId: booking.customerId,
+          title: "Post-Service Payment Submitted",
+          message: `Your post-service GCash payment of ₱${Number(payment.amount).toLocaleString()} has been submitted. Awaiting admin verification.`,
+          type: "PAYMENT",
+          actionType: "PAYMENT_PENDING"
+        }
+      });
+    }
+
     await notifyAdmins({
-      title: method === "GCASH" ? "Payment Submitted" : "Cash Payment Received",
-      message: `Booking #${booking.id}: ₱${Number(payment.amount).toLocaleString()} via ${method}. ${method === "GCASH" ? "Awaiting verification." : "Auto-verified."}`,
+      title: isPostService ? "Post-Service Payment Submitted" : (method === "GCASH" ? "Payment Submitted" : "Cash Payment Received"),
+      message: `Booking #${booking.id}: ₱${Number(payment.amount).toLocaleString()} via ${finalMethod}. ${isPostService ? "Post-service payment. Awaiting verification." : (method === "GCASH" ? "Awaiting verification." : "Auto-verified.")}`,
       type: "PAYMENT",
-      actionType: method === "GCASH" ? "PAYMENT_PENDING" : "PAYMENT_RECEIVED",
+      actionType: isPostService ? "POST_SERVICE_PAYMENT" : (method === "GCASH" ? "PAYMENT_PENDING" : "PAYMENT_RECEIVED"),
       targetId: String(booking.id),
       targetName: `Booking #${booking.id}`
     });
 
     res.status(201).json({
       success: true,
-      message: method === "GCASH" 
-        ? "Payment submitted. Awaiting admin verification."
-        : "Payment recorded successfully.",
+      message: isPostService 
+        ? "Post-service payment submitted. Awaiting admin verification."
+        : (method === "GCASH" ? "Payment submitted. Awaiting admin verification." : "Payment recorded successfully."),
       payment: {
         id: payment.id,
         amount: Number(payment.amount),
         method: payment.method,
         status: payment.status,
-        receiptImage: payment.receiptImage
+        proofImage: payment.proofImage
       }
     });
 
   } catch (error) {
-    console.error("CREATE PAYMENT ERROR:", error);
-    next(error);
+    console.error("ERROR [CREATE_PAYMENT]:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
-/* ============================
-   UPDATE BOOKING PAYMENT STATUS
-   ============================ */
 const updateBookingPaymentStatus = async (bookingId, newPaymentAmount) => {
   try {
     const booking = await prisma.booking.findUnique({
@@ -174,36 +231,26 @@ const updateBookingPaymentStatus = async (bookingId, newPaymentAmount) => {
 
     const newAmountPaid = Number(booking.amountPaid) + Number(newPaymentAmount);
     const totalAmount = Number(booking.totalAmount);
-    const downpaymentAmount = Number(booking.downpaymentAmount) || 0;
 
     let newStatus = booking.status;
-    let paymentStatus = "pending";
 
-    if (newAmountPaid >= totalAmount) {
-      newStatus = "confirmed";
-      paymentStatus = "completed";
-    } else if (newAmountPaid >= downpaymentAmount && downpaymentAmount > 0) {
-      newStatus = "partially_paid";
-      paymentStatus = "pending";
-    } else {
-      paymentStatus = "pending";
+    if (newAmountPaid >= totalAmount && totalAmount > 0) {
+      newStatus = "CONFIRMED";
     }
 
     await prisma.booking.update({
       where: { id: bookingId },
       data: {
         amountPaid: newAmountPaid,
-        status: newStatus,
-        paymentStatus
+        status: newStatus
       }
     });
 
-    // Notify customer
     await createNotification(booking.customerId, {
-      title: newStatus === "confirmed" ? "Booking Confirmed" : "Payment Received",
-      message: newStatus === "confirmed"
+      title: newStatus === "CONFIRMED" ? "Booking Confirmed" : "Payment Received",
+      message: newStatus === "CONFIRMED"
         ? "Your booking is now fully paid and confirmed."
-        : `Payment of ₱${newPaymentAmount.toLocaleString()} received. Remaining: ₱${(totalAmount - newAmountPaid).toLocaleString()}`,
+        : `Payment of ₱${newPaymentAmount.toLocaleString()} received.`,
       type: "PAYMENT",
       targetId: String(bookingId)
     });
@@ -213,11 +260,10 @@ const updateBookingPaymentStatus = async (bookingId, newPaymentAmount) => {
   }
 };
 
-/* ============================
-   VERIFY PAYMENT (ADMIN)
-   ============================ */
-const verifyPayment = async (req, res, next) => {
+const verifyPayment = async (req, res) => {
   try {
+    LOG_REQUEST(req, "VERIFY_PAYMENT");
+    
     const userId = req.user?.id ? String(req.user.id) : null;
     const paymentId = Number(req.params.id);
 
@@ -229,7 +275,11 @@ const verifyPayment = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Invalid payment ID" });
     }
 
-    const { verified, rejectionReason, extractedAmount, extractedDate } = req.body;
+    if (!["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Only admins can verify payments" });
+    }
+
+    const { approved, rejectionReason } = req.body;
 
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
@@ -240,67 +290,60 @@ const verifyPayment = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Payment not found" });
     }
 
-    if (payment.status !== "pending") {
+    if (payment.status !== "PENDING") {
       return res.status(400).json({
         success: false,
         message: "Payment has already been processed"
       });
     }
 
-    // Update payment
     const updatedPayment = await prisma.payment.update({
       where: { id: paymentId },
       data: {
-        status: verified ? "verified" : "rejected",
-        verifiedBy: verified ? userId : null,
-        verifiedAt: verified ? new Date() : null,
-        rejectionReason: rejectionReason || null,
-        ...(extractedAmount !== undefined && { extractedAmount }),
-        ...(extractedDate && { extractedDate })
+        status: approved ? "APPROVED" : "REJECTED",
+        verifiedBy: approved ? userId : null,
+        verifiedAt: approved ? new Date() : null,
+        rejectionReason: rejectionReason || null
       }
     });
 
-    // Create audit log
     await createAuditLog(
       userId,
-      verified ? "VERIFY" : "REJECT",
+      approved ? "APPROVE" : "REJECT",
       "Payment",
       paymentId,
       { status: payment.status },
-      { status: verified ? "verified" : "rejected", amount: payment.amount }
+      { status: approved ? "APPROVED" : "REJECTED", amount: payment.amount }
     );
 
-    if (verified) {
-      // Update booking payment
+    if (approved) {
       await updateBookingPaymentStatus(payment.bookingId, payment.amount);
 
-      // Notify customer
       await createNotification(payment.booking.customerId, {
-        title: "Payment Verified",
-        message: `Your ₱${Number(payment.amount).toLocaleString()} payment has been verified.`,
+        title: "Payment Approved",
+        message: `Your ₱${Number(payment.amount).toLocaleString()} payment has been approved.`,
         type: "PAYMENT",
+        actionType: "PAYMENT_APPROVED",
         targetId: String(payment.bookingId)
       });
 
-      // Notify admins
       await notifyAdmins({
-        title: "Payment Verified",
-        message: `Payment of ₱${Number(payment.amount).toLocaleString()} for Booking #${payment.bookingId} has been verified.`,
+        title: "Payment Approved",
+        message: `Payment of ₱${Number(payment.amount).toLocaleString()} for Booking #${payment.bookingId} has been approved.`,
         type: "PAYMENT",
-        actionType: "PAYMENT_VERIFIED",
+        actionType: "PAYMENT_APPROVED",
         targetId: String(payment.bookingId),
         targetName: `Booking #${payment.bookingId}`
       });
     } else {
-      // Notify customer of rejection
       await createNotification(payment.booking.customerId, {
         title: "Payment Rejected",
         message: rejectionReason || "Your payment was rejected. Please upload a new payment receipt.",
         type: "PAYMENT",
+        actionType: "PAYMENT_REJECTED",
         targetId: String(payment.bookingId)
       });
 
-      // Notify admins
       await notifyAdmins({
         title: "Payment Rejected",
         message: `Payment for Booking #${payment.bookingId} has been rejected. ${rejectionReason || ""}`,
@@ -313,21 +356,24 @@ const verifyPayment = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: verified ? "Payment verified successfully" : "Payment rejected",
+      message: approved ? "Payment approved successfully" : "Payment rejected",
       payment: updatedPayment
     });
 
   } catch (error) {
-    console.error("VERIFY PAYMENT ERROR:", error);
-    next(error);
+    console.error("ERROR [VERIFY_PAYMENT]:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
-/* ============================
-   CREATE MANUAL PAYMENT (RU - ADMIN)
-   ============================ */
-const createManualPayment = async (req, res, next) => {
+const createManualPayment = async (req, res) => {
   try {
+    LOG_REQUEST(req, "CREATE_MANUAL_PAYMENT");
+    
     const userId = req.user?.id ? String(req.user.id) : null;
 
     if (!userId) {
@@ -351,7 +397,6 @@ const createManualPayment = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
-    // Check not overpaying
     const remainingBalance = Number(booking.totalAmount) - Number(booking.amountPaid);
     if (Number(amount) > remainingBalance) {
       return res.status(400).json({
@@ -360,20 +405,18 @@ const createManualPayment = async (req, res, next) => {
       });
     }
 
-    // Create manual payment
     const payment = await prisma.payment.create({
       data: {
         bookingId: booking.id,
         amount: Number(amount),
-        method: "MANUAL",
-        status: "verified",
+        method: "CASH",
+        status: "APPROVED",
         verifiedBy: userId,
         verifiedAt: new Date(),
-        manualNote: note || "RU payment - verified manually"
+        manualNote: note || "Manual payment - verified"
       }
     });
 
-    // Create audit log
     await createAuditLog(
       userId,
       "CREATE",
@@ -383,7 +426,6 @@ const createManualPayment = async (req, res, next) => {
       { method: "MANUAL", amount: Number(amount) }
     );
 
-    // Update booking
     await updateBookingPaymentStatus(booking.id, amount);
 
     res.status(201).json({
@@ -393,16 +435,19 @@ const createManualPayment = async (req, res, next) => {
     });
 
   } catch (error) {
-    console.error("CREATE MANUAL PAYMENT ERROR:", error);
-    next(error);
+    console.error("ERROR [CREATE_MANUAL_PAYMENT]:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
-/* ============================
-   GET PAYMENTS
-   ============================ */
-const getPayments = async (req, res, next) => {
+const getPayments = async (req, res) => {
   try {
+    LOG_REQUEST(req, "GET_PAYMENTS");
+    
     const userId = req.user?.id ? String(req.user.id) : null;
     const userRole = req.user?.role || "CUSTOMER";
 
@@ -415,22 +460,18 @@ const getPayments = async (req, res, next) => {
 
     const where = {};
 
-    // Filter by booking
     if (bookingId) {
       where.bookingId = Number(bookingId);
     }
 
-    // Filter by status
     if (status) {
       where.status = status;
     }
 
-    // Filter by method
     if (method) {
       where.method = method;
     }
 
-    // Non-admin users only see their own bookings' payments
     if (!["ADMIN", "SUPER_ADMIN"].includes(userRole.toUpperCase())) {
       where.booking = { customerId: userId };
     }
@@ -462,28 +503,31 @@ const getPayments = async (req, res, next) => {
       success: true,
       payments,
       pagination: {
-        total,
+        total: total || 0,
         page: Number(page),
         limit: Number(limit),
-        pages: Math.ceil(total / Number(limit))
+        pages: Math.ceil(total / Number(limit)) || 0
       }
     });
 
   } catch (error) {
-    console.error("GET PAYMENTS ERROR:", error);
-    next(error);
+    console.error("ERROR [GET_PAYMENTS]:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
-/* ============================
-   GET PENDING VERIFICATIONS (ADMIN)
-   ============================ */
-const getPendingVerifications = async (req, res, next) => {
+const getPendingVerifications = async (req, res) => {
   try {
+    LOG_REQUEST(req, "GET_PENDING_VERIFICATIONS");
+    
     const { method, page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where = { status: "pending" };
+    const where = { status: "PENDING" };
     if (method) {
       where.method = method;
     }
@@ -511,31 +555,38 @@ const getPendingVerifications = async (req, res, next) => {
       success: true,
       payments,
       pagination: {
-        total,
+        total: total || 0,
         page: Number(page),
         limit: Number(limit),
-        pages: Math.ceil(total / Number(limit))
+        pages: Math.ceil(total / Number(limit)) || 0
       }
     });
 
   } catch (error) {
-    console.error("GET PENDING VERIFICATIONS ERROR:", error);
-    next(error);
+    console.error("ERROR [GET_PENDING_VERIFICATIONS]:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
-/* ============================
-   BULK VERIFY PAYMENTS (ADMIN)
-   ============================ */
-const bulkVerifyPayments = async (req, res, next) => {
+const bulkVerifyPayments = async (req, res) => {
   try {
+    LOG_REQUEST(req, "BULK_VERIFY_PAYMENTS");
+    
     const userId = req.user?.id ? String(req.user.id) : null;
 
     if (!userId) {
       return res.status(401).json({ success: false, message: "Invalid user token" });
     }
 
-    const { paymentIds, verified } = req.body;
+    if (!["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Only admins can bulk verify payments" });
+    }
+
+    const { paymentIds, approved } = req.body;
 
     if (!Array.isArray(paymentIds) || paymentIds.length === 0) {
       return res.status(400).json({
@@ -544,11 +595,10 @@ const bulkVerifyPayments = async (req, res, next) => {
       });
     }
 
-    // Get pending payments
     const payments = await prisma.payment.findMany({
       where: {
         id: { in: paymentIds.map(Number) },
-        status: "pending"
+        status: "PENDING"
       },
       include: { booking: true }
     });
@@ -560,73 +610,67 @@ const bulkVerifyPayments = async (req, res, next) => {
       });
     }
 
-    // Update all payments
     await prisma.payment.updateMany({
       where: { id: { in: payments.map(p => p.id) } },
       data: {
-        status: verified ? "verified" : "rejected",
-        verifiedBy: verified ? userId : null,
-        verifiedAt: verified ? new Date() : null
+        status: approved ? "APPROVED" : "REJECTED",
+        verifiedBy: approved ? userId : null,
+        verifiedAt: approved ? new Date() : null
       }
     });
 
-    // Update booking statuses for verified payments
-    if (verified) {
+    if (approved) {
       for (const payment of payments) {
         await updateBookingPaymentStatus(payment.bookingId, payment.amount);
         
         await createNotification(payment.booking.customerId, {
-          title: "Payment Verified",
-          message: `Your ₱${Number(payment.amount).toLocaleString()} payment has been verified.`,
+          title: "Payment Approved",
+          message: `Your ₱${Number(payment.amount).toLocaleString()} payment has been approved.`,
           type: "PAYMENT",
+          actionType: "PAYMENT_APPROVED",
           targetId: String(payment.bookingId)
         });
       }
     }
 
-    // Create audit log
     await createAuditLog(
       userId,
       "BULK_VERIFY",
       "Payment",
       paymentIds.join(","),
-      { count: payments.length, verified },
-      { verified }
+      { count: payments.length, approved },
+      { approved }
     );
 
     res.json({
       success: true,
-      message: `${payments.length} payments ${verified ? "verified" : "rejected"}`,
+      message: `${payments.length} payments ${approved ? "approved" : "rejected"}`,
       count: payments.length
     });
 
   } catch (error) {
-    console.error("BULK VERIFY ERROR:", error);
-    next(error);
+    console.error("ERROR [BULK_VERIFY_PAYMENTS]:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 
-/* ============================
-   OCR RECEIPT (Basic implementation)
-   Note: In production, use Tesseract.js or external OCR service
-   ============================ */
-const processOcrReceipt = async (req, res, next) => {
+const processOcrReceipt = async (req, res) => {
   try {
+    LOG_REQUEST(req, "OCR_RECEIPT");
+    
     if (!req.file) {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    // This is a basic OCR implementation
-    // In production, use Tesseract.js or a proper OCR service
-    
-    // For now, return placeholder extracted data
-    // The admin will verify the actual values
-    
     const result = {
       success: true,
       message: "Receipt uploaded. Please verify extracted data manually.",
       extractedData: {
-        referenceNumber: null, // Admin should verify
+        referenceNumber: null,
         amount: null,
         date: null,
         rawText: "OCR processing requires additional setup. Please verify manually."
@@ -636,8 +680,12 @@ const processOcrReceipt = async (req, res, next) => {
     res.json(result);
 
   } catch (error) {
-    console.error("OCR ERROR:", error);
-    next(error);
+    console.error("ERROR [OCR_RECEIPT]:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal Server Error",
+      error: error.message
+    });
   }
 };
 

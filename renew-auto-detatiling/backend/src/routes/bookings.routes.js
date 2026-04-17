@@ -63,7 +63,7 @@ router.post("/:id/add-service", authenticate, authorize("ADMIN", "SUPER_ADMIN"),
 router.patch("/assign/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
 router.patch("/:id/assign", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
 
-/* UPDATE STATUS */
+/* UPDATE STATUS - CUSTOMER, STAFF, ADMIN all allowed (controller enforces) */
 router.patch("/status/:id", authenticate, updateBookingStatus);
 router.patch("/:id/status", authenticate, updateBookingStatus);
 
@@ -72,10 +72,10 @@ router.patch("/payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN", "ST
 router.patch("/:id/payment", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), recordPayment);
 
 /* CANCEL BOOKING */
-router.patch("/cancel/:id", authenticate, cancelBooking);
+router.patch("/cancel/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), cancelBooking);
 
 /* CUSTOMER REQUEST CANCEL */
-router.patch("/request-cancel/:id", authenticate, requestCustomerCancel);
+router.patch("/request-cancel/:id", authenticate, authorize("CUSTOMER"), requestCustomerCancel);
 
 /* STAFF REQUEST CANCEL */
 router.post("/:id/request-cancel", authenticate, authorize("STAFF"), requestCancelBooking);

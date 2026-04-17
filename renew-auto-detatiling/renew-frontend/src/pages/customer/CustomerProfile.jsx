@@ -100,7 +100,7 @@ const CustomerProfile = () => {
     try{
 
       const res = await fetch(
-        "http://localhost:5000/api/users/update-name",
+        "http://localhost:5000/api/users/me",
         {
           method:"PATCH",
           headers:{
@@ -120,7 +120,7 @@ const CustomerProfile = () => {
 
       }
 
-      const data = await res.json();
+      await res.json();
 
       /* update UI */
 
@@ -162,15 +162,16 @@ const CustomerProfile = () => {
     try{
 
       const res = await fetch(
-        "http://localhost:5000/api/auth/request-password-change",
+        "http://localhost:5000/api/users/me/password",
         {
-          method:"POST",
+          method:"PATCH",
           headers:{
             "Content-Type":"application/json",
             Authorization:`Bearer ${token}`
           },
           body:JSON.stringify({
-            password:newPassword
+            currentPassword: "",
+            newPassword: newPassword
           })
         }
       );

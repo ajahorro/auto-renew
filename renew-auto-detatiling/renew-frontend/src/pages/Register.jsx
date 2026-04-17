@@ -18,7 +18,6 @@ function Register() {
   const [cooldown, setCooldown] = useState(false);
 
   const isDark = theme === "system" || theme === "dark";
-  const bgPrimary = isDark ? "#020617" : "#f1f5f9";
   const bgCard = isDark ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.9)";
   const textPrimary = isDark ? "#e2e8f0" : "#0f172a";
   const textSecondary = isDark ? "#94a3b8" : "#64748b";

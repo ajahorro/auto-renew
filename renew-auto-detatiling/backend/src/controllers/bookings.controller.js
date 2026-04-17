@@ -1,9 +1,33 @@
 const prisma = require("../config/prisma");
+const { sendEmail } = require("../services/email.service");
 
-// Helper to notify users with full context
+const LOG_REQUEST = (req, context) => {
+  console.log(`[${context}] Request Body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[${context}] Request Params:`, JSON.stringify(req.params, null, 2));
+  console.log(`[${context}] Request Query:`, JSON.stringify(req.query, null, 2));
+};
+
 const createNotification = async (userId, data) => {
   try {
-    return await prisma.notification.create({
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, notifyEmail: true, notifyWeb: true }
+    });
+
+    if (!user) {
+      console.log(`Notification skipped - user ${userId} not found`);
+      return null;
+    }
+
+    const hasWeb = user.notifyWeb !== false;
+    const hasEmail = user.notifyEmail !== false;
+
+    if (!hasWeb && !hasEmail) {
+      console.log(`Notification skipped - user ${userId} has disabled all notifications`);
+      return null;
+    }
+
+    const inAppNotification = hasWeb ? await prisma.notification.create({
       data: {
         userId,
         title: data.title,
@@ -15,25 +39,55 @@ const createNotification = async (userId, data) => {
         targetId: data.targetId,
         targetName: data.targetName
       }
-    });
+    }) : null;
+
+    if (hasEmail && user.email) {
+      const emailSubject = `[RENEW Auto Detailing] ${data.title}`;
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1e40af;">${data.title}</h2>
+          <p style="color: #374151; font-size: 16px;">${data.message}</p>
+          <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+            Log in to your account for more details.
+          </p>
+        </div>
+      `;
+      
+      sendEmail(user.email, emailSubject, emailHtml).catch(err => {
+        console.error("Email send failed:", err.message);
+      });
+    }
+
+    return inAppNotification;
   } catch (error) {
     console.error("Failed to create notification:", error);
   }
 };
 
-// Helper to notify all admins about booking updates
-const notifyAdminsBookingUpdated = async (bookingId, action, details = "", actorId = null, actorName = "System") => {
+const notifyAdmins = async (data) => {
   try {
     const admins = await prisma.user.findMany({
       where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
     });
-    
+    for (const admin of admins) {
+      await createNotification(admin.id, data);
+    }
+  } catch (error) {
+    console.error("Failed to notify admins:", error);
+  }
+};
+
+const notifyAdminsBookingUpdated = async (bookingId, title, message, actorId, actorName) => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
+    });
     for (const admin of admins) {
       await createNotification(admin.id, {
-        title: `Booking ${action}`,
-        message: `Booking #${bookingId}: ${details}`,
+        title,
+        message,
         type: "BOOKING",
-        actionType: action.toUpperCase().replace(" ", "_"),
+        actionType: "BOOKING_UPDATED",
         actorId,
         actorName,
         targetId: String(bookingId),
@@ -41,78 +95,56 @@ const notifyAdminsBookingUpdated = async (bookingId, action, details = "", actor
       });
     }
   } catch (error) {
-    console.error("Failed to notify admins:", error);
+    console.error("Failed to notify admins booking updated:", error);
   }
 };
 
 const parseBookingId = (req) => {
   const rawId = req.params.id || req.params.bookingId || req.body.id || req.query.id;
   const id = Number(rawId);
-  return Number.isInteger(id) ? id : null;
-};
-// STATUS CONSTANTS (must match Prisma enum BookingStatus)
-const STATUS = {
-  DRAFT: "draft",
-  PENDING: "pending",
-  PENDING_PAYMENT: "pending_payment",
-  PARTIALLY_PAID: "partially_paid",
-  CONFIRMED: "confirmed",
-  SCHEDULED: "scheduled",
-  ONGOING: "ongoing",
-  COMPLETED: "completed",
-  CANCELLED: "cancelled",
-  CANCEL_REQUESTED: "cancel_requested"
+  return Number.isInteger(id) && id > 0 ? id : null;
 };
 
-// VALID TRANSITIONS
+const STATUS = {
+  PENDING: "PENDING",
+  CONFIRMED: "CONFIRMED",
+  SCHEDULED: "SCHEDULED",
+  ONGOING: "ONGOING",
+  COMPLETED: "COMPLETED",
+  CANCELLED: "CANCELLED",
+  PENDING_PAYMENT: "PENDING_PAYMENT"
+};
+
 function isValidTransition(current, next) {
   const map = {
-    draft: ["pending", "cancelled"],
-    pending: ["pending_payment", "scheduled", "cancelled"],
-    pending_payment: ["partially_paid", "cancelled"],
-    partially_paid: ["confirmed", "cancelled"],
-    confirmed: ["scheduled", "cancelled"],
-    scheduled: ["ongoing", "cancelled"],
-    ongoing: ["completed"],
-    completed: [],
-    cancelled: [],
-    cancel_requested: ["cancelled"]
+    PENDING: ["CONFIRMED", "CANCELLED"],
+    CONFIRMED: ["ONGOING", "CANCELLED"],
+    ONGOING: ["COMPLETED"],
+    COMPLETED: [],
+    CANCELLED: []
   };
 
   return map[current]?.includes(next);
 }
 
-/* HELPERS */
-// FIX: 
-// function parseBookingId(req) {
-//   const id = Number(req.params.id);
-//   return Number.isInteger(id) ? id : null;
-// }
+function isPrivilegedRole(role) {
+  return role === "ADMIN" || role === "SUPER_ADMIN";
+}
 
 function calculateDownpayment(total) {
-  // If exactly 5000, require 2500 downpayment
-  if (total === 5000) return 2500;
-  // If under 5000, no downpayment
-  if (total < 5000) return 0;
-  // If between 5001 and 6000, 3500 downpayment
-  if (total <= 6000) return 3500;
-  // Above 6000, 5000 downpayment
-  return 5000;
+  if (total >= 5000) {
+    return total * 0.5;
+  }
+  return 0;
 }
-/* HELPERS CONTINUED */
 
 function calculateTotalDuration(services) {
   if (!Array.isArray(services)) return 0;
   let total = 0;
   services.forEach(service => {
-    // Ensure we are accessing durationMin correctly from the service object
     total += service.durationMin || 0;
   });
   return total;
-}
-
-function isPrivilegedRole(role) {
-  return role === "ADMIN" || role === "SUPER_ADMIN";
 }
 
 function getUpdatedPaymentState(booking, paymentAmount) {
@@ -120,27 +152,15 @@ function getUpdatedPaymentState(booking, paymentAmount) {
   const totalAmount = Number(booking.totalAmount) || 0;
   const newAmountPaid = currentPaid + paymentAmount;
 
-  let paymentStatus = "PARTIALLY_PAID";
-  if (newAmountPaid <= 0) {
-    paymentStatus = "UNPAID";
-  } else if (newAmountPaid >= totalAmount) {
-    paymentStatus = "PAID";
+  let nextStatus = booking.status;
+  if (newAmountPaid >= totalAmount && totalAmount > 0) {
+    nextStatus = STATUS.CONFIRMED;
   }
-
-  const downpaymentAmount = Number(booking.downpaymentAmount) || 0;
-  const downpaymentSatisfied =
-    !booking.downpaymentRequested || downpaymentAmount <= 0 || newAmountPaid >= downpaymentAmount;
-
-  const nextStatus =
-    booking.status === STATUS.PENDING && downpaymentSatisfied
-      ? STATUS.SCHEDULED
-      : booking.status;
 
   return {
     newAmountPaid,
-    paymentStatus,
     nextStatus,
-    downpaymentSatisfied
+    downpaymentSatisfied: true
   };
 }
 // FIX: 
@@ -191,10 +211,10 @@ function getUpdatedPaymentState(booking, paymentAmount) {
 //     console.error("Background state update failed:", error);
 //   }
 // }
-/* CREATE BOOKING */
 const createBooking = async (req, res) => {
   try {
-    // Ensure userId is treated as a String to match Schema CUID
+    LOG_REQUEST(req, "CREATE_BOOKING");
+    
     const userId = req.user?.id ? String(req.user.id) : null;
 
     if (!userId) {
@@ -205,8 +225,13 @@ const createBooking = async (req, res) => {
     }
 
     const {
+      customerId,
       services,
-      appointmentStart,
+      paymentMethod,
+      scheduledDate,
+      scheduledTime,
+      appointmentStart: bodyAppointmentStart,
+      totalAmount,
       notes,
       vehicleType,
       plateNumber,
@@ -216,100 +241,64 @@ const createBooking = async (req, res) => {
       vehicleModel
     } = req.body;
 
-    if (!services || services.length === 0 || !appointmentStart) {
+    if (!services || !Array.isArray(services) || services.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "services and appointmentStart required"
+        message: "services array is required and must not be empty"
       });
     }
 
-    let start = new Date(appointmentStart);
-    /* CLEAN TIMESTAMP */
-    start.setSeconds(0);
-    start.setMilliseconds(0);
+    if (!paymentMethod) {
+      return res.status(400).json({
+        success: false,
+        message: "paymentMethod is required"
+      });
+    }
 
-    console.log("📅 BOOKING DEBUG:", {
-      received: appointmentStart,
-      parsed: start.toISOString(),
-      hour: start.getHours(),
-      date: start.toDateString()
-    });
+    const validPaymentMethods = ["GCASH", "CASH", "GCASH_POST_SERVICE"];
+    const normalizedPaymentMethod = String(paymentMethod).toUpperCase();
+    if (!validPaymentMethods.includes(normalizedPaymentMethod)) {
+      return res.status(400).json({
+        success: false,
+        message: "paymentMethod must be 'GCASH', 'CASH', or 'GCASH_POST_SERVICE'"
+      });
+    }
 
-    /* Use simple time comparison (no timezone offset) */
+    const parsedTotalAmount = Number(totalAmount);
+    if (!Number.isFinite(parsedTotalAmount) || parsedTotalAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "totalAmount must be a positive number"
+      });
+    }
+
+    let appointmentStart;
+    if (bodyAppointmentStart) {
+      appointmentStart = new Date(bodyAppointmentStart);
+    } else if (scheduledDate && scheduledTime) {
+      appointmentStart = new Date(`${scheduledDate}T${scheduledTime}:00`);
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Either appointmentStart or scheduledDate/scheduledTime is required"
+      });
+    }
+    
+    if (Number.isNaN(appointmentStart.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid date/time format"
+      });
+    }
+    
     const now = new Date();
-    
-    /* PREVENT BOOKING IN PAST */
-    const isToday = start.toDateString() === now.toDateString();
-    
-    // For same day: allow if time hasn't passed
-    // For future: allow if date is in future
-    if (isToday && start.getTime() <= now.getTime()) {
-      return res.status(400).json({
-        success: false,
-        message: isToday ? "Cannot book in the past" : "Cannot create booking in the past"
-      });
-    }
-    if (!isToday && start < now) {
+    if (appointmentStart < now) {
       return res.status(400).json({
         success: false,
         message: "Cannot create booking in the past"
       });
     }
 
-    /* MINIMUM NOTICE (15 MINUTES) - Same day bookings get faster processing */
-    const minimumNoticeMinutes = isToday ? 15 : 30;
-    const minStart = new Date(now.getTime() + minimumNoticeMinutes * 60000);
-    if (start < minStart) {
-      return res.status(400).json({
-        success: false,
-        message: `Bookings must be made at least ${minimumNoticeMinutes} minutes in advance`
-      });
-    }
-
-    /* MAX BOOKING WINDOW (60 DAYS) */
-    const maxAdvanceDays = 60;
-    const maxDate = new Date();
-    maxDate.setDate(maxDate.getDate() + maxAdvanceDays);
-
-    if (start > maxDate) {
-      return res.status(400).json({
-        success: false,
-        message: "Bookings cannot be made more than 60 days in advance"
-      });
-    }
-
-    /* LOAD BUSINESS SETTINGS */
-    let settings = await prisma.businessSettings.findFirst();
-    const defaults = { openingHour: 9, closingHour: 18, maxBookingsPerSlot: 3, maxServicesPerBooking: 5 };
-
-    const openingHour = settings?.openingHour ?? defaults.openingHour;
-    const closingHour = settings?.closingHour ?? defaults.closingHour;
-    const maxBookingsPerSlot = settings?.maxBookingsPerSlot ?? defaults.maxBookingsPerSlot;
-    const maxServicesPerBooking = settings?.maxServicesPerBooking ?? defaults.maxServicesPerBooking;
-    
-    console.log("🕐 BUSINESS HOURS DEBUG:", { openingHour, closingHour, startHour: start.getHours() });
-    
-    // Simply check if start hour is within range (no timezone complexity)
-    const startHour = start.getHours();
-    console.log("✅ Hour check:", { startHour, openingHour, closingHour, allowed: startHour >= openingHour && startHour <= closingHour });
-    
-    /* ALLOW BOOKINGS THAT PARTIALLY EXTEND PAST CLOSING */
-    // Only check end time for future bookings
-    if (!isToday) {
-      // For future bookings, allow some flexibility
-      const end = new Date(start.getTime() + totalDuration * 60000);
-      const closingDateTime = new Date(start);
-      closingDateTime.setHours(closingHour + 1, 0, 0, 0); // Allow 1 hour buffer past closing
-      
-      if (end > closingDateTime) {
-        return res.status(400).json({
-          success: false,
-          message: "Service duration extends too far past closing time"
-        });
-      }
-    }
-
-    /* CONVERT SERVICE IDS */
     const serviceIds = services.map(Number).filter(n => !isNaN(n));
     if (serviceIds.length !== services.length) {
       return res.status(400).json({
@@ -318,22 +307,10 @@ const createBooking = async (req, res) => {
       });
     }
 
-    /* CHECK SERVICE LIMIT */
-    if (serviceIds.length > maxServicesPerBooking) {
-      return res.status(400).json({
-        success: false,
-        message: `You can only select up to ${maxServicesPerBooking} services per booking`
-      });
-    }
-
     const dbServices = await prisma.service.findMany({
-      where: {
-        id: { in: serviceIds },
-        isActive: true
-      }
+      where: { id: { in: serviceIds }, isActive: true }
     });
 
-    /* VALIDATE SERVICES */
     if (dbServices.length === 0 || dbServices.length !== serviceIds.length) {
       return res.status(400).json({
         success: false,
@@ -341,189 +318,114 @@ const createBooking = async (req, res) => {
       });
     }
 
-    /* CALCULATE TOTAL DURATION */
     const totalDuration = calculateTotalDuration(dbServices);
-    if (totalDuration <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid service duration"
-      });
-    }
+    const appointmentEnd = new Date(appointmentStart.getTime() + totalDuration * 60000);
 
-    const end = new Date(start.getTime() + totalDuration * 60000);
+    const settings = await prisma.businessSettings.findFirst();
+    const defaults = { openingHour: 9, closingHour: 18, maxBookingsPerSlot: 3 };
+    const maxBookingsPerSlot = settings?.maxBookingsPerSlot ?? defaults.maxBookingsPerSlot;
 
-    // Allow bookings that end up to 1 hour past closing (typical service takes 1-2 hours)
-    const closingTime = new Date(start);
-    closingTime.setHours(closingHour + 1, 0, 0, 0);
+    const items = dbServices.map(service => ({
+      serviceId: service.id,
+      serviceNameAtBooking: service.name,
+      priceAtBooking: Number(service.price),
+      durationAtBooking: service.durationMin,
+      quantity: 1
+    }));
 
-    if (end > closingTime) {
-      return res.status(400).json({
-        success: false,
-        message: "Service would extend too far past closing time"
-      });
-    }
+    const finalCustomerId = customerId ? String(customerId) : userId;
 
-    /* PREVENT CUSTOMER DOUBLE BOOKING */
-    const customerConflict = await prisma.booking.findFirst({
-      where: {
-        customerId: userId,
-        status: { in: [STATUS.PENDING, STATUS.SCHEDULED, STATUS.ONGOING] },
-        appointmentStart: { lt: end },
-        appointmentEnd: { gt: start }
-      }
-    });
-
-    if (customerConflict) {
-      return res.status(400).json({
-        success: false,
-        message: "You already have a booking during this time"
-      });
-    }
-    
-    /* PREVENT SLOT OVERBOOKING */
-    const overlappingBookings = await prisma.booking.count({
-      where: {
-        appointmentStart: { lt: end },
-        appointmentEnd: { gt: start },
-        status: { not: STATUS.CANCELLED }
-      }
-    });
-
-    if (overlappingBookings + 1 > maxBookingsPerSlot) {
-      return res.status(400).json({
-        success: false,
-        message: "Selected time slot is fully booked"
-      });
-    }
-
-    /* PREPARE BOOKING ITEMS */
-    let totalAmount = 0;
-    const items = dbServices.map(service => {
-      const price = Number(service.price);
-      totalAmount += price;
-      return {
-        serviceId: service.id,
-        serviceNameAtBooking: service.name,
-        priceAtBooking: price,
-        durationAtBooking: service.durationMin,
-        quantity: 1
-      };
-    });
-
-    /* PAYMENT RULES */
-    let downpaymentRequired = 0;
-
-    if (totalAmount <= 5000) {
-      downpaymentRequired = 0;
-    } else if (totalAmount <= 6000) {
-      downpaymentRequired = 3500;
-    } else {
-      downpaymentRequired = 5000;
-    }
-
-    const bookingStatus =
-      downpaymentRequired > 0 ? STATUS.PENDING : STATUS.SCHEDULED;
-
-    const customer = await prisma.user.findUnique({ where: { id: userId } });
-
-    /* WRAP IN TRANSACTION */
-    const result = await prisma.$transaction(async (tx) => {
-      // Race Condition Protection
-      const currentOverlapCount = await tx.booking.count({
+    const booking = await prisma.$transaction(async (tx) => {
+      const existingBookingsCount = await tx.booking.count({
         where: {
-          appointmentStart: { lt: end },
-          appointmentEnd: { gt: start },
-          status: { not: STATUS.CANCELLED }
+          appointmentStart: { lt: appointmentEnd },
+          appointmentEnd: { gt: appointmentStart },
+          status: { notIn: [STATUS.CANCELLED, STATUS.COMPLETED] }
         }
       });
 
-      if (currentOverlapCount + 1 > maxBookingsPerSlot) {
-        throw new Error("This slot just filled up. Please select a different time.");
+      if (existingBookingsCount >= maxBookingsPerSlot) {
+        throw new Error("Selected time slot is fully booked. Please choose another time.");
       }
 
       const newBooking = await tx.booking.create({
         data: {
-          customerId: userId,
-          vehicleType,
-          plateNumber,
-          contactNumber,
-          email: customer?.email,
-          vehicleBrand,
-          vehicleModel,
-          notes,
-          status: bookingStatus,
-          appointmentStart: start,
-          appointmentEnd: end,
-          totalAmount,
-          paymentStatus: "UNPAID",
+          customerId: finalCustomerId,
+          status: STATUS.PENDING,
+          cancellationStatus: "NONE",
+          refundStatus: "NONE",
+          paymentStatus: "PENDING",
+          appointmentStart,
+          appointmentEnd,
+          totalAmount: parsedTotalAmount,
           amountPaid: 0,
-          paymentMethod: "CASH",
-          downpaymentRequested: downpaymentRequired > 0,
-          downpaymentAmount: downpaymentRequired > 0 ? downpaymentRequired : null,
+          paymentMethod: normalizedPaymentMethod,
+          vehicleType: vehicleType || null,
+          plateNumber: plateNumber || null,
+          contactNumber: contactNumber || null,
+          vehicleBrand: vehicleBrand || null,
+          vehicleModel: vehicleModel || null,
+          notes: notes || null,
           items: {
-            create: items.map(item => ({
-              serviceId: item.serviceId,
-              serviceNameAtBooking: item.serviceNameAtBooking,
-              priceAtBooking: item.priceAtBooking,
-              durationAtBooking: item.durationAtBooking,
-              quantity: item.quantity
-            }))
+            create: items
           }
         },
         include: { items: true }
       });
 
-      // Notify customer
       await tx.notification.create({
         data: {
-          userId: userId,
-          title: bookingStatus === STATUS.SCHEDULED ? "Booking Confirmed" : "Booking Received",
-          message: bookingStatus === STATUS.SCHEDULED 
-            ? `Your appointment on ${start.toLocaleDateString()} is confirmed.`
-            : `Your booking request for ${start.toLocaleDateString()} is pending review.`,
+          userId: finalCustomerId,
+          title: "Booking Created",
+          message: `Your booking for ${appointmentStart.toLocaleDateString()} has been received and is pending confirmation.`,
           type: "BOOKING",
-          actionType: "CREATED_BOOKING",
-          actorId: userId,
-          actorName: customer?.fullName || "Customer",
-          targetId: String(newBooking.id),
-          targetName: `Booking #${newBooking.id}`
+          actionType: "BOOKING_CREATED"
         }
       });
-
-      // Notify admins
-      await notifyAdminsBookingUpdated(newBooking.id, "Created", `New booking from ${customer?.fullName || "Customer"}. Total: ₱${totalAmount.toLocaleString()}`, userId, customer?.fullName);
-
-      if (downpaymentRequired > 0) {
-        await tx.notification.create({
-          data: {
-            userId: userId,
-            title: "Downpayment Required",
-            message: `Total: ₱${totalAmount.toLocaleString()}. Downpayment of ₱${downpaymentRequired.toLocaleString()} required.`,
-            type: "PAYMENT"
-          }
-        });
-      }
 
       return newBooking;
     });
 
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
+    });
+    for (const admin of admins) {
+      await createNotification(admin.id, {
+        title: "New Booking Created",
+        message: `New booking created. Total: ₱${parsedTotalAmount.toLocaleString()}`,
+        type: "BOOKING",
+        actionType: "BOOKING_CREATED",
+        targetId: String(booking.id),
+        targetName: `Booking #${booking.id}`
+      });
+    }
+
     res.status(201).json({
       success: true,
-      booking: result,
-      downpaymentRequired
+      booking
     });
 
   } catch (error) {
-    console.error("🔥 CREATE BOOKING ERROR:", error);
+    console.error("ERROR [CREATE_BOOKING]:", error);
+    // Check for known business logic errors (e.g., slot fully booked)
+    if (error.message && error.message.includes("fully booked")) {
+      return res.status(409).json({
+        success: false,
+        message: error.message
+      });
+    }
     res.status(500).json({
       success: false,
-      message: error.message || "Internal server error"
+      message: "Internal Server Error",
+      error: error.message,
+      stack: process.env.NODE_ENV === "development" ? error.stack : undefined
     });
   }
 };
-/* CANCEL BOOKING */
 const cancelBooking = async (req, res) => {
   try {
+    LOG_REQUEST(req, "CANCEL_BOOKING");
+    
     const id = parseBookingId(req);
 
     if (!id) {
@@ -544,21 +446,17 @@ const cancelBooking = async (req, res) => {
       });
     }
 
-    // Only admins can directly cancel bookings
     if (!["ADMIN", "SUPER_ADMIN"].includes(req.user.role)) {
       return res.status(403).json({
         success: false,
-        message: "Only admins can cancel bookings. Customers must request cancellation."
+        message: "Only admins can cancel bookings"
       });
     }
 
-    if (
-      booking.status !== STATUS.PENDING &&
-      booking.status !== STATUS.SCHEDULED
-    ) {
+    if (booking.status !== STATUS.PENDING && booking.status !== STATUS.CONFIRMED) {
       return res.status(400).json({
         success: false,
-        message: "Only pending or scheduled bookings can be cancelled"
+        message: "Only pending or confirmed bookings can be cancelled"
       });
     }
 
@@ -567,14 +465,17 @@ const cancelBooking = async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       const updatedBooking = await tx.booking.update({
         where: { id },
-        data: { status: STATUS.CANCELLED }
+        data: { 
+          status: STATUS.CANCELLED,
+          cancellationStatus: "APPROVED"
+        }
       });
 
       await tx.notification.create({
         data: {
           userId: booking.customerId,
           title: "Booking Cancelled",
-          message: `Your booking on ${new Date(booking.appointmentStart).toLocaleString()} has been cancelled.`,
+          message: `Your booking has been cancelled.`,
           type: "BOOKING",
           actionType: "CANCELLED",
           actorId: req.user?.id || null,
@@ -583,22 +484,6 @@ const cancelBooking = async (req, res) => {
           targetName: `Booking #${id}`
         }
       });
-
-      if (booking.assignedStaffId) {
-        await tx.notification.create({
-          data: {
-            userId: booking.assignedStaffId,
-            title: "Booking Cancelled",
-            message: `Booking #${id} has been cancelled.`,
-            type: "BOOKING",
-            actionType: "CANCELLED",
-            actorId: req.user?.id || null,
-            actorName: actor?.fullName || "Admin",
-            targetId: String(id),
-            targetName: `Booking #${id}`
-          }
-        });
-      }
 
       return updatedBooking;
     });
@@ -609,16 +494,19 @@ const cancelBooking = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("CANCEL BOOKING ERROR:", error);
+    console.error("ERROR [CANCEL_BOOKING]:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to cancel booking"
+      message: "Internal Server Error",
+      error: error.message
     });
   }
 };
 /* ASSIGN STAFF (SMART ASSIGNMENT) */
 const assignStaff = async (req, res) => {
   try {
+    LOG_REQUEST(req, "ASSIGN_STAFF");
+    
     const id = parseBookingId(req);
     let { assignedStaffId } = req.body;
 
@@ -665,7 +553,7 @@ const assignStaff = async (req, res) => {
     if (assignedStaffId) {
       // Ensure the ID is a string for the query
       const staff = await prisma.user.findUnique({ where: { id: String(assignedStaffId) } });
-      if (!staff || staff.role !== "STAFF" || !staff.active) {
+      if (!staff || staff.role !== "STAFF" || !staff.isActive) {
         return res.status(400).json({ success: false, message: "Invalid or inactive staff" });
       }
 
@@ -691,7 +579,7 @@ const assignStaff = async (req, res) => {
           where: {
             assignedStaffId: staff.id,
             id: { not: id },
-            status: { in: [STATUS.PENDING, STATUS.SCHEDULED, STATUS.ONGOING] },
+        status: { in: [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
             appointmentStart: { lt: booking.appointmentEnd },
             appointmentEnd: { gt: booking.appointmentStart }
           }
@@ -725,10 +613,9 @@ const assignStaff = async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       const updatedBooking = await tx.booking.update({
         where: { id },
-        // Ensure assignedStaffId is cast to String
         data: { 
           assignedStaffId: String(assignedStaffId),
-          status: booking.status === STATUS.PENDING ? STATUS.SCHEDULED : booking.status
+          status: booking.status === STATUS.PENDING ? STATUS.CONFIRMED : booking.status
         },
         include: { assignedStaff: { select: { fullName: true } }, customer: { select: { fullName: true } } }
       });
@@ -799,9 +686,10 @@ const assignStaff = async (req, res) => {
 };
 
 /* UPDATE BOOKING STATUS */
-
 const updateBookingStatus = async (req, res) => {
   try {
+    LOG_REQUEST(req, "UPDATE_BOOKING_STATUS");
+    
     const id = parseBookingId(req);
 
     if (!id) {
@@ -869,7 +757,7 @@ const updateBookingStatus = async (req, res) => {
       }
 
       const allowedStaffTransitions = {
-        [STATUS.SCHEDULED]: [STATUS.ONGOING],
+        [STATUS.CONFIRMED]: [STATUS.ONGOING],
         [STATUS.ONGOING]: [STATUS.COMPLETED]
       };
 
@@ -883,32 +771,14 @@ const updateBookingStatus = async (req, res) => {
 
     if (isPrivilegedRole(actorRole)) {
       const allowedAdminTransitions = {
-        [STATUS.PENDING]: [STATUS.SCHEDULED, STATUS.CANCELLED],
-        [STATUS.SCHEDULED]: [STATUS.CANCELLED]
+        [STATUS.PENDING]: [STATUS.CONFIRMED, STATUS.CANCELLED],
+        [STATUS.CONFIRMED]: [STATUS.CANCELLED]
       };
 
       if (!allowedAdminTransitions[booking.status]?.includes(status)) {
         return res.status(403).json({
           success: false,
-          message: "Admin can only approve, schedule, or cancel active bookings"
-        });
-      }
-
-      if (status === STATUS.SCHEDULED && !booking.assignedStaffId) {
-        return res.status(400).json({
-          success: false,
-          message: "Assign staff before scheduling a booking"
-        });
-      }
-
-      if (
-        status === STATUS.SCHEDULED &&
-        booking.downpaymentRequested &&
-        (Number(booking.amountPaid) || 0) < (Number(booking.downpaymentAmount) || 0)
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Downpayment must be verified before scheduling this booking"
+          message: "Admin can only confirm or cancel active bookings"
         });
       }
     }
@@ -937,10 +807,9 @@ const updateBookingStatus = async (req, res) => {
 // Define the lock state
     const isNowLocked = status === STATUS.COMPLETED || status === STATUS.CANCELLED;
 
-    // Determine notification content based on status
     const getNotificationContent = (newStatus) => {
       switch (newStatus) {
-        case STATUS.SCHEDULED:
+        case STATUS.CONFIRMED:
           return {
             title: "Booking Confirmed",
             message: `Your appointment on ${new Date(booking.appointmentStart).toLocaleDateString()} at ${new Date(booking.appointmentStart).toLocaleTimeString()} has been confirmed.`
@@ -973,11 +842,7 @@ const updateBookingStatus = async (req, res) => {
     const result = await prisma.$transaction(async (tx) => {
       const updatedBooking = await tx.booking.update({
         where: { id },
-        data: { 
-          status,
-          isLocked: isNowLocked ? true : (booking.isLocked || false),
-          ...(status === STATUS.SCHEDULED ? { downpaymentRequested: false } : {})
-        }
+        data: { status, isLocked: isNowLocked }
       });
 
       const notificationContent = getNotificationContent(status);
@@ -1051,6 +916,8 @@ const updateBookingStatus = async (req, res) => {
 /* RECORD PAYMENT */
 const recordPayment = async (req, res) => {
   try {
+    LOG_REQUEST(req, "RECORD_PAYMENT");
+    
     const id = parseBookingId(req);
 
     if (!id) {
@@ -1113,28 +980,24 @@ const recordPayment = async (req, res) => {
       });
     }
 
-    const { newAmountPaid, paymentStatus, nextStatus, downpaymentSatisfied } =
+    const { newAmountPaid, nextStatus } =
       getUpdatedPaymentState(booking, paymentAmount);
 
-    // 3. Atomic Update (All or Nothing)
     const updated = await prisma.$transaction(async (tx) => {
-      // Create the payment history record
       await tx.payment.create({
         data: {
           bookingId: id,
           amount: paymentAmount,
-          method: method || "CASH"
+          method: method || "CASH",
+          status: "APPROVED"
         }
       });
 
-      // Update the main booking record
       const updatedBooking = await tx.booking.update({
         where: { id },
         data: {
           amountPaid: newAmountPaid,
-          paymentStatus,
-          status: nextStatus,
-          downpaymentRequested: booking.downpaymentRequested ? !downpaymentSatisfied : booking.downpaymentRequested
+          status: nextStatus
         }
       });
 
@@ -1142,8 +1005,8 @@ const recordPayment = async (req, res) => {
       const remaining = (Number(booking.totalAmount) || 0) - newAmountPaid;
       let paymentMessage = `Payment of ₱${paymentAmount.toLocaleString()} received. `;
       
-      if (paymentStatus === "PAID") {
-        paymentMessage += `Your booking is now fully paid.`;
+      if (nextStatus === STATUS.CONFIRMED) {
+        paymentMessage += `Your booking is now fully paid and confirmed.`;
       } else if (remaining > 0) {
         paymentMessage += `Remaining balance: ₱${remaining.toLocaleString()}.`;
       }
@@ -1162,12 +1025,12 @@ const recordPayment = async (req, res) => {
         }
       });
 
-      if (nextStatus === STATUS.SCHEDULED && booking.status === STATUS.PENDING) {
+      if (nextStatus === STATUS.CONFIRMED && booking.status === STATUS.PENDING) {
         await tx.notification.create({
           data: {
             userId: booking.customerId,
             title: "Booking Confirmed",
-            message: `Your booking on ${new Date(booking.appointmentStart).toLocaleDateString()} has been confirmed after downpayment.`,
+            message: `Your booking on ${new Date(booking.appointmentStart).toLocaleDateString()} has been confirmed after payment.`,
             type: "BOOKING",
             actionType: "CONFIRMED",
             actorId: req.user?.id || null,
@@ -1198,6 +1061,8 @@ const recordPayment = async (req, res) => {
 /* ADD SERVICE TO BOOKING (WITH VALIDATION) */
 const addServiceToBooking = async (req, res) => {
   try {
+    LOG_REQUEST(req, "ADD_SERVICE_TO_BOOKING");
+    
     const id = parseBookingId(req);
     const { serviceId } = req.body;
 
@@ -1354,16 +1219,16 @@ const addPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: "Payment exceeds the remaining balance" });
     }
 
-    const { newAmountPaid, paymentStatus, nextStatus, downpaymentSatisfied } =
+    const { newAmountPaid, nextStatus } =
       getUpdatedPaymentState(booking, paymentAmount);
 
-    // Use transaction to ensure both records update together
     await prisma.$transaction(async (tx) => {
       await tx.payment.create({
         data: {
           bookingId: id,
           amount: paymentAmount,
-          method: method
+          method: method,
+          status: "APPROVED"
         }
       });
 
@@ -1371,9 +1236,7 @@ const addPayment = async (req, res) => {
         where: { id },
         data: {
           amountPaid: newAmountPaid,
-          paymentStatus,
-          status: nextStatus,
-          downpaymentRequested: booking.downpaymentRequested ? !downpaymentSatisfied : booking.downpaymentRequested
+          status: nextStatus
         }
       });
 
@@ -1381,8 +1244,8 @@ const addPayment = async (req, res) => {
       const remaining = (Number(booking.totalAmount) || 0) - newAmountPaid;
       let paymentMessage = `Payment of ₱${paymentAmount.toLocaleString()} received. `;
       
-      if (paymentStatus === "PAID") {
-        paymentMessage += `Your booking is now fully paid.`;
+      if (nextStatus === STATUS.CONFIRMED) {
+        paymentMessage += `Your booking is now fully paid and confirmed.`;
       } else if (remaining > 0) {
         paymentMessage += `Remaining balance: ₱${remaining.toLocaleString()}.`;
       }
@@ -1401,12 +1264,12 @@ const addPayment = async (req, res) => {
         }
       });
 
-      if (nextStatus === STATUS.SCHEDULED && booking.status === STATUS.PENDING) {
+      if (nextStatus === STATUS.CONFIRMED && booking.status === STATUS.PENDING) {
         await tx.notification.create({
           data: {
             userId: booking.customerId,
             title: "Booking Confirmed",
-            message: `Your booking on ${new Date(booking.appointmentStart).toLocaleDateString()} has been confirmed after downpayment.`,
+            message: `Your booking on ${new Date(booking.appointmentStart).toLocaleDateString()} has been confirmed after payment.`,
             type: "BOOKING",
             actionType: "CONFIRMED",
             actorId: req.user?.id || null,
@@ -1425,7 +1288,7 @@ const addPayment = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("ADD PAYMENT ERROR:", err);
+    console.error("ERROR [ADD_PAYMENT]:", err);
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
@@ -1433,6 +1296,8 @@ const addPayment = async (req, res) => {
 /* GET AVAILABILITY */
 const getAvailability = async (req, res) => {
   try {
+    LOG_REQUEST(req, "GET_AVAILABILITY");
+    
     const { date } = req.query;
 
     if (!date) {
@@ -1464,10 +1329,7 @@ const getAvailability = async (req, res) => {
       
       existingBookings = await prisma.booking.findMany({
         where: {
-          OR: [
-            { appointmentStart: { gte: startOfDay, lte: endOfDay } },
-            { appointmentDate: { gte: startOfDay, lte: endOfDay } }
-          ],
+          appointmentStart: { gte: startOfDay, lte: endOfDay },
           status: {
             notIn: [STATUS.CANCELLED, STATUS.COMPLETED]
           }
@@ -1492,31 +1354,38 @@ const getAvailability = async (req, res) => {
       const minSlotTime = new Date(Date.now() + 15 * 60000);
       if (requestedDate.toDateString() === now.toDateString() && slotStart < minSlotTime) continue;
 
-      // Check if this slot is available
-      const isAvailable = !existingBookings.some(booking => {
-        const bStart = booking.appointmentStart || booking.appointmentDate;
+      // Count bookings that overlap with this slot
+      const currentBookingsCount = existingBookings.filter(booking => {
+        const bStart = booking.appointmentStart;
         const bEnd = booking.appointmentEnd;
         if (!bStart || !bEnd) return false;
-        
         // Check overlap
         return bStart < slotEnd && bEnd > slotStart;
-      });
+      }).length;
 
-      if (isAvailable) {
-        // Convert to 12-hour format with AM/PM
-        const period = hour >= 12 ? 'PM' : 'AM';
-        const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-        availableSlots.push(
-          `${displayHour}:${String(minute).padStart(2, "0")} ${period}`
-        );
-      }
+      // Check if slot is full
+      const isFull = currentBookingsCount >= maxBookings;
+
+      // Convert to 12-hour format with AM/PM
+      const period = hour >= 12 ? 'PM' : 'AM';
+      const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      const timeString = `${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
+
+      availableSlots.push({
+        time: timeString,
+        isFull,
+        currentCount: currentBookingsCount,
+        maxCount: maxBookings,
+        available: !isFull
+      });
     }
 
     return res.json({
       success: true,
       date,
       slots: availableSlots,
-      availableCount: availableSlots.length
+      availableCount: availableSlots.filter(s => !s.isFull).length,
+      maxBookingsPerSlot: maxBookings
     });
 
   } catch (error) {
@@ -1534,77 +1403,223 @@ const getAvailability = async (req, res) => {
     return res.json({
       success: true,
       date: req.query.date,
-      slots: defaultSlots,
+      slots: defaultSlots.map(time => ({ time, isFull: false, currentCount: 0, maxCount: maxBookings, available: true })),
       availableCount: defaultSlots.length,
-      fallback: true
+      fallback: true,
+      maxBookingsPerSlot: maxBookings
     });
   }
 };
-/* ADMIN ANALYTICS */
 const getAdminAnalytics = async (req, res) => {
   try {
-    // 1. Booking Counts - count ALL statuses including the legacy ones
-    const [total, draft, pendingPayment, partiallyPaid, confirmed, pending, scheduled, ongoing, completed, cancelled] = await Promise.all([
+    LOG_REQUEST(req, "ADMIN_ANALYTICS");
+    
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [
+      total,
+      pending,
+      scheduled,
+      ongoing,
+      completed,
+      cancelled,
+      todayBookings,
+      weekBookings,
+      monthBookings,
+      allBookings
+    ] = await Promise.all([
       prisma.booking.count(),
-      prisma.booking.count({ where: { status: "draft" } }),
-      prisma.booking.count({ where: { status: "pending" } }),
-      prisma.booking.count({ where: { status: "pending_payment" } }),
-      prisma.booking.count({ where: { status: "partially_paid" } }),
-      prisma.booking.count({ where: { status: "confirmed" } }),
-      prisma.booking.count({ where: { status: "scheduled" } }),
-      prisma.booking.count({ where: { status: "ongoing" } }),
-      prisma.booking.count({ where: { status: "completed" } }),
-      prisma.booking.count({ where: { status: "cancelled" } })
+      prisma.booking.count({ where: { status: "PENDING" } }),
+      prisma.booking.count({ where: { status: "SCHEDULED" } }),
+      prisma.booking.count({ where: { status: "ONGOING" } }),
+      prisma.booking.count({ where: { status: "COMPLETED" } }),
+      prisma.booking.count({ where: { status: "CANCELLED" } }),
+      prisma.booking.count({ where: { appointmentStart: { gte: startOfToday } } }),
+      prisma.booking.count({ where: { appointmentStart: { gte: startOfWeek } } }),
+      prisma.booking.count({ where: { appointmentStart: { gte: startOfMonth } } }),
+      prisma.booking.findMany({
+        where: { status: { notIn: ["PENDING"] } },
+        include: { 
+          items: { include: { service: true } },
+          payments: true
+        }
+      })
     ]);
 
-    // 2. Revenue (Total money actually received across ALL bookings)
     const allPayments = await prisma.payment.findMany({
-      select: { amount: true }
+      where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED"] } },
+      select: { amount: true, method: true }
     });
     
     const totalRevenue = allPayments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const gcashRevenue = allPayments
+      .filter(p => p.method === "GCASH" || p.method === "GCASH_POST_SERVICE")
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+    const cashRevenue = allPayments
+      .filter(p => p.method === "CASH")
+      .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
 
-    // 3. Pending Receivables (Money still owed to the shop)
     const bookingsWithBalance = await prisma.booking.findMany({
       where: { 
-        status: { notIn: [STATUS.CANCELLED, STATUS.COMPLETED] }
+        status: { notIn: ["CANCELLED", "COMPLETED"] }
       },
-      select: { totalAmount: true, amountPaid: true }
+      select: { totalAmount: true, amountPaid: true, paymentStatus: true }
     });
 
     const pendingRevenue = bookingsWithBalance.reduce((sum, b) => {
-      const balance = Number(b.totalAmount) - (Number(b.amountPaid) || 0);
+      const total = Number(b.totalAmount) || 0;
+      const paid = Number(b.amountPaid) || 0;
+      const balance = total - paid;
       return sum + (balance > 0 ? balance : 0);
     }, 0);
+
+    const paidBookings = allBookings.filter(b => {
+      const paid = Number(b.amountPaid) || 0;
+      const total = Number(b.totalAmount) || 0;
+      return paid >= total;
+    }).length;
+    const unpaidBookings = total - paidBookings - cancelled;
+
+    const bookingsPerService = {};
+    const bookingsPerHour = {};
+    allBookings.forEach(booking => {
+      booking.items.forEach(item => {
+        const serviceName = item.service?.name || "Unknown";
+        bookingsPerService[serviceName] = (bookingsPerService[serviceName] || 0) + 1;
+      });
+      if (booking.appointmentStart) {
+        const hour = new Date(booking.appointmentStart).getHours();
+        bookingsPerHour[hour] = (bookingsPerHour[hour] || 0) + 1;
+      }
+    });
+
+    const peakHours = Object.entries(bookingsPerHour)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([hour, count]) => ({
+        hour: parseInt(hour),
+        count,
+        label: `${hour}:00`
+      }));
+
+    const bookingsPerDay = {};
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    for (let i = 1; i <= daysInMonth; i++) {
+      bookingsPerDay[i] = 0;
+    }
+    allBookings.forEach(booking => {
+      if (booking.appointmentStart) {
+        const date = new Date(booking.appointmentStart);
+        if (date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()) {
+          const day = date.getDate();
+          bookingsPerDay[day] = (bookingsPerDay[day] || 0) + 1;
+        }
+      }
+    });
+
+    const totalDaysWithBookings = Object.values(bookingsPerDay).filter(v => v > 0).length;
+    const avgBookingsPerDay = totalDaysWithBookings > 0 
+      ? Number((total / totalDaysWithBookings).toFixed(1)) 
+      : 0;
+
+    const cancellationRate = total > 0 
+      ? Number(((cancelled / total) * 100).toFixed(1)) 
+      : 0;
+
+    const staffBookings = await prisma.booking.groupBy({
+      by: ["assignedStaffId"],
+      where: { assignedStaffId: { not: null } },
+      _count: { id: true }
+    });
+
+    const staffWithNames = await Promise.all(
+      staffBookings.map(async (sb) => {
+        const staff = await prisma.user.findUnique({
+          where: { id: sb.assignedStaffId },
+          select: { fullName: true }
+        });
+        const completedCount = await prisma.booking.count({
+          where: { 
+            assignedStaffId: sb.assignedStaffId,
+            status: "COMPLETED"
+          }
+        });
+        return {
+          staffId: sb.assignedStaffId,
+          name: staff?.fullName || "Unknown Staff",
+          totalBookings: sb._count.id,
+          completedBookings: completedCount,
+          completionRate: sb._count.id > 0 
+            ? Number(((completedCount / sb._count.id) * 100).toFixed(1)) 
+            : 0
+        };
+      })
+    );
+
+    const revenuePerService = {};
+    allPayments.forEach(payment => {
+      allBookings.forEach(booking => {
+        booking.items.forEach(item => {
+          if (booking.payments.some(bp => bp.id === payment.id)) {
+            const serviceName = item.service?.name || "Unknown";
+            revenuePerService[serviceName] = (revenuePerService[serviceName] || 0) + (Number(payment.amount) || 0) / (booking.items.length || 1);
+          }
+        });
+      });
+    });
 
     return res.json({
       success: true,
       analytics: {
         counts: {
-          total,
-          draft,
-          pendingPayment,
-          partiallyPaid,
-          confirmed,
-          pending,
-          scheduled,
-          ongoing,
-          completed,
-          cancelled
+          total: total || 0,
+          pending: pending || 0,
+          scheduled: scheduled || 0,
+          ongoing: ongoing || 0,
+          completed: completed || 0,
+          cancelled: cancelled || 0
+        },
+        bookingTrends: {
+          today: todayBookings || 0,
+          thisWeek: weekBookings || 0,
+          thisMonth: monthBookings || 0
         },
         finances: {
-          totalRevenue,
-          pendingRevenue,
-          averageBookingValue: total > 0 ? (totalRevenue / total).toFixed(2) : 0
-        }
+          totalRevenue: totalRevenue || 0,
+          gcashRevenue: gcashRevenue || 0,
+          cashRevenue: cashRevenue || 0,
+          pendingRevenue: pendingRevenue || 0,
+          paidBookings,
+          unpaidBookings,
+          averageBookingValue: total > 0 ? Number((totalRevenue / total).toFixed(2)) : 0
+        },
+        bookingsPerService: Object.entries(bookingsPerService)
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count),
+        revenuePerService: Object.entries(revenuePerService)
+          .map(([name, revenue]) => ({ name, revenue: Number(revenue.toFixed(2)) }))
+          .sort((a, b) => b.revenue - a.revenue),
+        peakHours,
+        bookingsPerDay,
+        operational: {
+          cancellationRate,
+          avgBookingsPerDay,
+          totalDaysTracked: totalDaysWithBookings
+        },
+        staffAnalytics: staffWithNames.sort((a, b) => b.totalBookings - a.totalBookings)
       }
     });
 
   } catch (err) {
-    console.error("Admin analytics error:", err);
+    console.error("ERROR [ADMIN_ANALYTICS]:", err);
     return res.status(500).json({
       success: false,
-      message: "Failed to load analytics"
+      message: "Internal Server Error",
+      error: err.message
     });
   }
 };
@@ -1612,6 +1627,8 @@ const getAdminAnalytics = async (req, res) => {
 /* REQUEST DOWNPAYMENT */
 const requestDownpayment = async (req, res) => {
   try {
+    LOG_REQUEST(req, "REQUEST_DOWNPAYMENT");
+    
     const id = parseBookingId(req);
 
     if (!id) {
@@ -1699,7 +1716,9 @@ const requestDownpayment = async (req, res) => {
 /* ADMIN SCHEDULE VIEW */
 const getDailySchedule = async (req, res) => {
   try {
-    const { date } = req.query; // Expecting YYYY-MM-DD
+    LOG_REQUEST(req, "GET_DAILY_SCHEDULE");
+    
+    const { date } = req.query;
 
     if (!date) {
       return res.status(400).json({
@@ -1753,21 +1772,23 @@ const getDailySchedule = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("SCHEDULE ERROR:", error);
+    console.error("ERROR [GET_DAILY_SCHEDULE]:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to load schedule"
+      message: "Internal Server Error",
+      error: error.message
     });
   }
 };
 
 // ================= ADDON REQUEST =================
 
-// CREATE
 const createAddonRequest = async (req, res) => {
   try {
+    LOG_REQUEST(req, "CREATE_ADDON_REQUEST");
+    
     const id = parseBookingId(req);
-    const { services } = req.body; // Expecting array of service IDs
+    const { services } = req.body;
 
     if (!id || !Array.isArray(services) || services.length === 0) {
       return res.status(400).json({ 
@@ -1803,9 +1824,10 @@ const createAddonRequest = async (req, res) => {
     return res.status(500).json({ success: false, message: "Failed to create addon request" });
   }
 };
-// APPROVE (REFACTORED FOR SAFETY)
 const approveAddonRequest = async (req, res) => {
   try {
+    LOG_REQUEST(req, "APPROVE_ADDON_REQUEST");
+    
     const { id } = req.params;
 
     const request = await prisma.addonRequest.findUnique({
@@ -1890,9 +1912,10 @@ const approveAddonRequest = async (req, res) => {
   }
 };
 
-// REJECT
 const rejectAddonRequest = async (req, res) => {
   try {
+    LOG_REQUEST(req, "REJECT_ADDON_REQUEST");
+    
     const { id } = req.params;
     
     const request = await prisma.addonRequest.findUnique({
@@ -1966,7 +1989,7 @@ const requestCancelBooking = async (req, res) => {
       });
     }
 
-    if (![STATUS.PENDING, STATUS.SCHEDULED].includes(booking.status)) {
+    if (![STATUS.PENDING, STATUS.CONFIRMED].includes(booking.status)) {
       return res.status(400).json({
         success: false,
         message: "Cannot request cancellation for this booking"
@@ -2042,10 +2065,17 @@ const updateBooking = async (req, res) => {
       return res.status(403).json({ success: false, message: "You can only edit your own booking" });
     }
 
-    if (booking.status !== STATUS.SCHEDULED) {
+    if (booking.isLocked) {
+      return res.status(403).json({
+        success: false,
+        message: "This booking is locked and cannot be edited"
+      });
+    }
+
+    if (booking.status !== STATUS.CONFIRMED) {
       return res.status(400).json({
         success: false,
-        message: "Only scheduled bookings can be edited"
+        message: "Only confirmed bookings can be edited"
       });
     }
 
@@ -2173,14 +2203,7 @@ const updateBooking = async (req, res) => {
       };
     });
 
-    let downpaymentRequired = 0;
-    if (totalAmount > 5000 && totalAmount <= 6000) {
-      downpaymentRequired = 3500;
-    } else if (totalAmount > 6000) {
-      downpaymentRequired = 5000;
-    }
-
-    const nextStatus = downpaymentRequired > 0 ? STATUS.PENDING : STATUS.SCHEDULED;
+    let downpaymentRequired = calculateDownpayment(totalAmount);
 
     const updated = await prisma.$transaction(async (tx) => {
       await tx.bookingItem.deleteMany({ where: { bookingId: id } });
@@ -2199,9 +2222,7 @@ const updateBooking = async (req, res) => {
           vehicleBrand,
           vehicleModel,
           totalAmount,
-          status: nextStatus,
-          downpaymentRequested: downpaymentRequired > 0,
-          downpaymentAmount: downpaymentRequired > 0 ? downpaymentRequired : null
+          status: STATUS.PENDING
         }
       });
     });
@@ -2209,11 +2230,8 @@ const updateBooking = async (req, res) => {
     await prisma.notification.create({
       data: {
         userId: booking.customerId,
-        title: nextStatus === STATUS.SCHEDULED ? "Booking Updated" : "Booking Updated - Downpayment Required",
-        message:
-          nextStatus === STATUS.SCHEDULED
-            ? "Your booking changes were saved successfully."
-            : `Your booking changes were saved. A downpayment of ₱${downpaymentRequired.toLocaleString()} is now required.`,
+        title: "Booking Updated",
+        message: "Your booking changes were saved successfully.",
         type: "BOOKING",
         actionType: "UPDATED",
         actorId: req.user?.id || null,
@@ -2255,6 +2273,8 @@ const updateBooking = async (req, res) => {
 
 const confirmDownpayment = async (req, res) => {
   try {
+    LOG_REQUEST(req, "CONFIRM_DOWNPAYMENT");
+    
     const id = parseBookingId(req);
 
     if (!id) {
@@ -2300,7 +2320,7 @@ const confirmDownpayment = async (req, res) => {
       });
     }
 
-    const { newAmountPaid, paymentStatus, nextStatus } =
+    const { newAmountPaid, nextStatus } =
       getUpdatedPaymentState(booking, remainingDownpayment);
 
     const actor = await prisma.user.findUnique({ where: { id: req.user?.id } });
@@ -2310,7 +2330,8 @@ const confirmDownpayment = async (req, res) => {
         data: {
           bookingId: id,
           amount: remainingDownpayment,
-          method: "CASH"
+          method: "CASH",
+          status: "APPROVED"
         }
       });
 
@@ -2318,9 +2339,7 @@ const confirmDownpayment = async (req, res) => {
         where: { id },
         data: {
           amountPaid: newAmountPaid,
-          paymentStatus,
-          status: nextStatus,
-          downpaymentRequested: false
+          status: nextStatus
         }
       });
 
@@ -2328,7 +2347,7 @@ const confirmDownpayment = async (req, res) => {
         data: {
           userId: booking.customerId,
           title: "Downpayment Verified",
-          message: "Your downpayment has been verified and your booking is now scheduled.",
+          message: "Your downpayment has been verified and your booking is now confirmed.",
           type: "PAYMENT",
           actionType: "DOWNPAYMENT_VERIFIED",
           actorId: req.user?.id || null,
@@ -2357,6 +2376,15 @@ const confirmDownpayment = async (req, res) => {
 
 const getBookings = async (req, res) => {
   try {
+    LOG_REQUEST(req, "GET_BOOKINGS");
+    
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ 
+        success: false, 
+        message: "Authentication required" 
+      });
+    }
+
     const role = req.user.role;
     const userId = String(req.user.id);
     let where = {};
@@ -2384,15 +2412,43 @@ const getBookings = async (req, res) => {
       orderBy: { appointmentStart: "desc" }
     });
 
-    res.json({ bookings, success: true });
+    const sanitizedBookings = bookings.map(booking => ({
+      ...booking,
+      totalAmount: booking.totalAmount ? Number(booking.totalAmount) : 0,
+      amountPaid: booking.amountPaid ? Number(booking.amountPaid) : 0,
+      incurredCost: booking.incurredCost ? Number(booking.incurredCost) : 0,
+      refundAmount: booking.refundAmount ? Number(booking.refundAmount) : 0,
+      equipmentCost: booking.equipmentCost ? Number(booking.equipmentCost) : 0,
+      downpaymentAmount: booking.downpaymentAmount ? Number(booking.downpaymentAmount) : null,
+      items: booking.items.map(item => ({
+        ...item,
+        priceAtBooking: item.priceAtBooking ? Number(item.priceAtBooking) : 0
+      })),
+      payments: booking.payments.map(payment => ({
+        ...payment,
+        amount: payment.amount ? Number(payment.amount) : 0
+      }))
+    }));
+
+    res.json({ bookings: sanitizedBookings, success: true });
   } catch (error) {
-    console.error("GET BOOKINGS ERROR:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch bookings" });
+    console.error("ERROR [GET_BOOKINGS]:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Internal Server Error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 
 const getBookingById = async (req, res) => {
   try {
+    LOG_REQUEST(req, "GET_BOOKING_BY_ID");
+    
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "Authentication required" });
+    }
+
     const id = parseBookingId(req);
     if (!id) {
       return res.status(400).json({ success: false, message: "Invalid booking ID" });
@@ -2401,7 +2457,14 @@ const getBookingById = async (req, res) => {
     const booking = await prisma.booking.findUnique({
       where: { id },
       include: {
-        customer: true,
+        customer: {
+          select: { 
+            id: true, 
+            fullName: true, 
+            email: true, 
+            phone: true 
+          }
+        },
         assignedStaff: { select: { id: true, fullName: true } },
         items: { include: { service: true } },
         payments: true,
@@ -2413,19 +2476,42 @@ const getBookingById = async (req, res) => {
       return res.status(404).json({ success: false, message: "Booking not found" });
     }
 
-    // Security check: Match string IDs
     if (req.user.role === "CUSTOMER" && String(booking.customerId) !== String(req.user.id)) {
       return res.status(403).json({ success: false, message: "Unauthorized access" });
     }
 
-    res.json(booking);
+    const sanitizedBooking = {
+      ...booking,
+      totalAmount: booking.totalAmount ? Number(booking.totalAmount) : 0,
+      amountPaid: booking.amountPaid ? Number(booking.amountPaid) : 0,
+      incurredCost: booking.incurredCost ? Number(booking.incurredCost) : 0,
+      refundAmount: booking.refundAmount ? Number(booking.refundAmount) : 0,
+      equipmentCost: booking.equipmentCost ? Number(booking.equipmentCost) : 0,
+      downpaymentAmount: booking.downpaymentAmount ? Number(booking.downpaymentAmount) : null,
+      items: booking.items.map(item => ({
+        ...item,
+        priceAtBooking: item.priceAtBooking ? Number(item.priceAtBooking) : 0
+      })),
+      payments: booking.payments.map(payment => ({
+        ...payment,
+        amount: payment.amount ? Number(payment.amount) : 0
+      }))
+    };
+
+    res.json({ booking: sanitizedBooking, success: true });
   } catch (error) {
     console.error("GET BOOKING BY ID ERROR:", error);
-    res.status(500).json({ success: false, message: "Failed to fetch booking details" });
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch booking details",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
   }
 };
 const getAddonRequests = async (req, res) => {
   try {
+    LOG_REQUEST(req, "GET_ADDON_REQUESTS");
+    
     const bookingId = parseBookingId(req);
     if (!bookingId) {
       return res.status(400).json({ success: false, message: "Invalid booking ID" });
@@ -2460,11 +2546,17 @@ const getAddonRequests = async (req, res) => {
 /* CUSTOMER REQUEST CANCEL */
 const requestCustomerCancel = async (req, res) => {
   try {
+    LOG_REQUEST(req, "REQUEST_CUSTOMER_CANCEL");
+    
     const id = parseBookingId(req);
     const { reason } = req.body;
 
     if (!id) {
       return res.status(400).json({ success: false, message: "Invalid booking id" });
+    }
+
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({ success: false, message: "Cancellation reason is required" });
     }
 
     const booking = await prisma.booking.findUnique({
@@ -2482,17 +2574,41 @@ const requestCustomerCancel = async (req, res) => {
     }
 
     // Check valid status
-    if (booking.status !== STATUS.PENDING && booking.status !== STATUS.SCHEDULED) {
+    if (!["PENDING", "CONFIRMED"].includes(booking.status)) {
       return res.status(400).json({ success: false, message: "Cannot request cancellation for this booking" });
     }
 
-    // Update booking status to CANCEL_REQUESTED
-    await prisma.booking.update({
-      where: { id },
-      data: {
-        status: STATUS.CANCEL_REQUESTED,
-        cancellationReason: reason || "Customer requested cancellation"
-      }
+    // Check if already requested
+    if (booking.cancellationStatus === "REQUESTED") {
+      return res.status(400).json({ success: false, message: "Cancellation already requested" });
+    }
+
+    if (booking.cancellationStatus === "APPROVED") {
+      return res.status(400).json({ success: false, message: "Booking is already cancelled" });
+    }
+
+    const actor = await prisma.user.findUnique({ where: { id: req.user?.id } });
+
+    // Create CancellationRequest and update booking in transaction
+    await prisma.$transaction(async (tx) => {
+      // Create CancellationRequest record
+      await tx.cancellationRequest.create({
+        data: {
+          bookingId: id,
+          requestedBy: req.user.id,
+          reason: reason.trim(),
+          status: "REQUESTED"
+        }
+      });
+
+      // Update booking status
+      await tx.booking.update({
+        where: { id },
+        data: {
+          cancellationStatus: "REQUESTED",
+          cancellationReason: reason.trim()
+        }
+      });
     });
 
     // Notify admins
@@ -2503,15 +2619,32 @@ const requestCustomerCancel = async (req, res) => {
       await prisma.notification.create({
         data: {
           userId: admin.id,
-          title: "Cancel Request",
-          message: `Customer ${booking.customer?.fullName || "Unknown"} requested cancellation for Booking #${id}. Reason: ${reason || "Not provided"}`,
-          type: "BOOKING",
-          actionType: "CANCEL_REQUESTED",
+          title: "Cancellation Request",
+          message: `${actor?.fullName || "Customer"} requested cancellation for Booking #${id}. Reason: ${reason}`,
+          type: "CANCELLATION",
+          actionType: "CANCELLATION_REQUESTED",
+          actorId: req.user.id,
+          actorName: actor?.fullName || "Customer",
           targetId: String(id),
           targetName: `Booking #${id}`
         }
       });
     }
+
+    // Notify customer
+    await prisma.notification.create({
+      data: {
+        userId: booking.customerId,
+        title: "Cancellation Requested",
+        message: `Your cancellation request for Booking #${id} has been submitted. We will review it shortly.`,
+        type: "CANCELLATION",
+        actionType: "CANCELLATION_REQUESTED",
+        actorId: req.user.id,
+        actorName: actor?.fullName || "Customer",
+        targetId: String(id),
+        targetName: `Booking #${id}`
+      }
+    });
 
     return res.json({ success: true, message: "Cancellation request submitted. An admin will review your request." });
 

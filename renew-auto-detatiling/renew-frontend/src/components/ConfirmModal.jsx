@@ -1,5 +1,4 @@
 import React from "react";
-import toast from "react-hot-toast";
 
 export const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, confirmText = "Confirm", cancelText = "Cancel", type = "danger" }) => {
   if (!isOpen) return null;
@@ -7,7 +6,7 @@ export const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel, conf
   const handleConfirm = async () => {
     try {
       await onConfirm();
-    } catch (err) {
+    } catch {
       // Error handled by caller
     }
   };

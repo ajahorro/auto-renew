@@ -29,7 +29,6 @@ const AdminPayments = () => {
   }, [fetchPayments]);
 
   const verifyPayment = async (paymentId, verified) => {
-    const action = verified ? "verify" : "reject";
     const confirmed = await confirmAction({
       title: `${verified ? "Verify" : "Reject"} Payment`,
       message: verified 
@@ -52,11 +51,12 @@ const AdminPayments = () => {
     }
   };
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case "pending": return { bg: "#f59e0b", text: "Pending" };
-      case "verified": return { bg: "#10b981", text: "Verified" };
-      case "rejected": return { bg: "#ef4444", text: "Rejected" };
+const getStatusBadge = (status) => {
+      switch (status) {
+        case "PENDING": return { bg: "#f59e0b", text: "Pending" };
+        case "VERIFIED": 
+        case "APPROVED": return { bg: "#10b981", text: "Verified" };
+        case "REJECTED": return { bg: "#ef4444", text: "Rejected" };
       case "completed": return { bg: "#3b82f6", text: "Completed" };
       default: return { bg: "#64748b", text: status };
     }

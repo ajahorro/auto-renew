@@ -13,7 +13,9 @@ const CustomerSettings = () => {
   const [profile, setProfile] = useState({
     fullName: storedUser.fullName || "",
     email: storedUser.email || "",
-    phone: storedUser.phone || ""
+    phone: storedUser.phone || "",
+    notifyEmail: storedUser.notifyEmail ?? false,
+    notifyWeb: storedUser.notifyWeb ?? true
   });
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -27,9 +29,50 @@ const CustomerSettings = () => {
   const [pendingEmail, setPendingEmail] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+
   useEffect(() => {
     loadUser();
-  }, []);
+    if (activeTab === "notifications") {
+      loadNotifications();
+    }
+  }, [activeTab]);
+
+  const loadNotifications = async () => {
+    setLoadingNotifications(true);
+    try {
+      const res = await API.get("/notifications");
+      setNotifications(res.data.notifications || []);
+    } catch (err) {
+      console.log("Notifications fetch error", err);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const markRead = async (id) => {
+    try {
+      await API.patch(`/notifications/${id}/read`);
+      setNotifications(prev =>
+        prev.map(n =>
+          n.id === id ? { ...n, isRead: true } : n
+        )
+      );
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
+  const saveNotificationPrefs = async (field, value) => {
+    try {
+      await API.patch("/users/me", { [field]: value });
+      setProfile(p => ({ ...p, [field]: value }));
+      toast.success("Notification preference updated");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update");
+    }
+  };
 
   const loadUser = async () => {
     try {
@@ -38,9 +81,16 @@ const CustomerSettings = () => {
         setProfile({
           fullName: res.data.user.fullName || "",
           email: res.data.user.email || "",
-          phone: res.data.user.phone || ""
+          phone: res.data.user.phone || "",
+          notifyEmail: res.data.user.notifyEmail ?? false,
+          notifyWeb: res.data.user.notifyWeb ?? true
         });
-        localStorage.setItem("user", JSON.stringify(res.data.user));
+        const updatedUser = {
+          ...res.data.user,
+          notifyEmail: res.data.user.notifyEmail ?? false,
+          notifyWeb: res.data.user.notifyWeb ?? true
+        };
+        localStorage.setItem("user", JSON.stringify(updatedUser));
       }
     } catch (err) {
       console.log(err);
@@ -147,6 +197,7 @@ const CustomerSettings = () => {
 
   const tabs = [
     { id: "profile", label: "Profile" },
+    { id: "notifications", label: "Notifications" },
     { id: "theme", label: "Theme" },
     { id: "terms", label: "Terms & Conditions" },
     { id: "danger", label: "Delete Account" }
@@ -241,6 +292,45 @@ const CustomerSettings = () => {
                 </button>
 
                 <div style={styles.divider} />
+                <h2 style={styles.sectionHeader}>Notification Preferences</h2>
+                <div style={styles.prefList}>
+                  <div style={styles.prefItem}>
+                    <div>
+                      <strong style={styles.prefLabel}>Email Notifications</strong>
+                      <p style={styles.prefDesc}>Receive booking confirmations and updates via email</p>
+                    </div>
+                    <label style={styles.toggle}>
+                      <input
+                        type="checkbox"
+                        checked={profile.notifyEmail}
+                        onChange={(e) => saveNotificationPrefs("notifyEmail", e.target.checked)}
+                      />
+                      <span style={{
+                        ...styles.toggleSlider,
+                        background: profile.notifyEmail ? "var(--accent-green)" : "var(--bg-tertiary)"
+                      }}></span>
+                    </label>
+                  </div>
+                  <div style={styles.prefItem}>
+                    <div>
+                      <strong style={styles.prefLabel}>Web Notifications</strong>
+                      <p style={styles.prefDesc}>Receive in-app notifications and alerts</p>
+                    </div>
+                    <label style={styles.toggle}>
+                      <input
+                        type="checkbox"
+                        checked={profile.notifyWeb}
+                        onChange={(e) => saveNotificationPrefs("notifyWeb", e.target.checked)}
+                      />
+                      <span style={{
+                        ...styles.toggleSlider,
+                        background: profile.notifyWeb ? "var(--accent-green)" : "var(--bg-tertiary)"
+                      }}></span>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={styles.divider} />
                 <h2 style={styles.sectionHeader}>Change Password</h2>
                 <div style={styles.formGrid}>
                   <div style={styles.formGroup}>
@@ -267,6 +357,47 @@ const CustomerSettings = () => {
                 <button style={styles.greenBtn} onClick={changePassword} disabled={saving}>
                   Update Password
                 </button>
+              </div>
+            )}
+
+            {activeTab === "notifications" && (
+              <div style={styles.contentCard}>
+                <h2 style={styles.sectionHeader}>Your Notifications</h2>
+                <p style={styles.helperText}>
+                  View all your recent notifications and updates.
+                </p>
+
+                {loadingNotifications ? (
+                  <p style={styles.loading}>Loading notifications...</p>
+                ) : notifications.length === 0 ? (
+                  <p style={styles.emptyNotif}>No notifications yet.</p>
+                ) : (
+                  <div style={styles.notifList}>
+                    {notifications.map(n => (
+                      <div
+                        key={n.id}
+                        style={{
+                          ...styles.notifCard,
+                          background: n.isRead ? "var(--bg-secondary)" : "var(--bg-tertiary)"
+                        }}
+                        onClick={() => !n.isRead && markRead(n.id)}
+                      >
+                        <div style={styles.notifRow}>
+                          <strong style={{ color: "var(--text-primary)" }}>{n.title || "Notification"}</strong>
+                          {!n.isRead && (
+                            <span style={styles.unreadBadge}>New</span>
+                          )}
+                        </div>
+                        <p style={styles.notifMessage}>{n.message}</p>
+                        {n.createdAt && (
+                          <p style={styles.notifDate}>
+                            {new Date(n.createdAt).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -684,6 +815,82 @@ const styles = {
   },
   loading: {
     fontSize: "14px",
+    color: "var(--text-secondary)"
+  },
+  prefList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px"
+  },
+  prefItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "16px",
+    background: "var(--bg-secondary)",
+    borderRadius: "12px"
+  },
+  prefLabel: {
+    fontSize: "14px",
+    fontWeight: "600",
+    color: "var(--text-primary)"
+  },
+  prefDesc: {
+    fontSize: "12px",
+    color: "var(--text-secondary)",
+    marginTop: "4px"
+  },
+  toggle: {
+    position: "relative",
+    display: "inline-block",
+    width: "48px",
+    height: "26px",
+    cursor: "pointer"
+  },
+  toggleSlider: {
+    position: "absolute",
+    inset: 0,
+    borderRadius: "13px",
+    transition: "0.3s"
+  },
+  emptyNotif: {
+    fontSize: "14px",
+    color: "var(--text-secondary)",
+    textAlign: "center",
+    padding: "40px"
+  },
+  notifList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px"
+  },
+  notifCard: {
+    padding: "16px",
+    borderRadius: "12px",
+    cursor: "pointer",
+    border: "1px solid var(--border-color)"
+  },
+  notifRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "6px"
+  },
+  unreadBadge: {
+    background: "var(--accent-blue)",
+    color: "white",
+    padding: "2px 8px",
+    borderRadius: "6px",
+    fontSize: "12px"
+  },
+  notifMessage: {
+    fontSize: "14px",
+    color: "var(--text-secondary)",
+    marginBottom: "6px"
+  },
+  notifDate: {
+    fontSize: "12px",
+    opacity: 0.6,
     color: "var(--text-secondary)"
   }
 };

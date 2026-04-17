@@ -57,22 +57,14 @@ const AdminSchedule = () => {
     return Math.ceil((end - start) / (1000 * 60 * 60));
   };
 
-  // Check if hour slot is covered by any booking
-  const isCoveredByBooking = (hour) => {
-    return bookings.some(b => {
-      if (!b.appointmentStart || !b.appointmentEnd) return false;
-      const startHour = new Date(b.appointmentStart).getHours();
-      const endHour = new Date(b.appointmentEnd).getHours();
-      return hour > startHour && hour < endHour;
-    });
-  };
-
   const getStatusColor = (status) => {
     switch (status) {
-      case "pending": return "#facc15";
-      case "scheduled": return "#3b82f6";
-      case "ongoing": return "#f97316";
-      case "completed": return "#22c55e";
+      case "PENDING": return "#facc15";
+      case "SCHEDULED": 
+      case "CONFIRMED": return "#3b82f6";
+      case "ONGOING": return "#f97316";
+      case "COMPLETED": return "#22c55e";
+      case "CANCELLED": return "#ef4444";
       default: return "#64748b";
     }
   };

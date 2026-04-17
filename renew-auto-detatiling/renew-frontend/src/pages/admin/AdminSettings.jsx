@@ -54,7 +54,7 @@ const AdminSettings = () => {
         if (settingsRes.data) {
           setBusinessSettings(settingsRes.data);
         }
-      } catch (e) {
+      } catch {
         console.log("No business settings yet");
       }
 
@@ -147,7 +147,7 @@ const AdminSettings = () => {
       await API.patch(`/admin/users/${userId}/${action}`);
       toast.success(`User ${action}d`);
       loadData();
-    } catch (err) {
+    } catch {
       toast.error("Failed");
     }
   };

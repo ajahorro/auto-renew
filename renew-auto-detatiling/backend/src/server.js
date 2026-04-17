@@ -15,6 +15,9 @@ const paymentsRoutes = require("./routes/payments.routes");
 const notificationsRoutes = require("./routes/notifications.routes");
 const usersRoutes = require("./routes/users.routes");
 const businessSettingsRoutes = require("./routes/businessSettings.routes");
+const cancellationsRoutes = require("./routes/cancellations.routes");
+const communicationsRoutes = require("./routes/communications.routes");
+const refundsRoutes = require("./routes/refunds.routes");
 const authController = require("./controllers/auth.controller");
 
 // Middleware
@@ -39,11 +42,13 @@ app.get("/", (req, res) => {
 
 /* AUTH ROUTES (PUBLIC)*/
 app.post("/api/auth/register/initiate", authController.initiateRegistration);
-app.post("/api/auth/register/verify", authController.verifyRegistrationOtp);
+app.post("/api/auth/register/verify-otp", authController.verifyRegistrationOtp);
 app.post("/api/auth/register/resend-otp", authController.resendRegistrationOtp);
 app.post("/api/auth/login", authController.login);
 app.post("/api/auth/forgot-password", authController.forgotPassword);
 app.post("/api/auth/reset-password", authController.resetPassword);
+app.post("/api/auth/send-email-otp", authController.sendEmailOtp);
+app.post("/api/auth/verify-email-otp", authController.verifyEmailOtp);
 
 /* MAIN ROUTES*/
 app.use("/api/services", servicesRoutes);
@@ -52,6 +57,9 @@ app.use("/api/payments", paymentsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/business-settings", businessSettingsRoutes);
+app.use("/api/cancellations", cancellationsRoutes);
+app.use("/api/communications", communicationsRoutes);
+app.use("/api/refunds", refundsRoutes);
 
 /* USER PROFILE */
 app.get("/api/me", authenticate, (req, res) => {

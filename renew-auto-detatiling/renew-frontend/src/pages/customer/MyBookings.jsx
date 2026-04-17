@@ -12,6 +12,7 @@ const MyBookings = () => {
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isPostServicePayment, setIsPostServicePayment] = useState(false);
 
   const fetchBookings = useCallback(async () => {
     try {
@@ -55,49 +56,50 @@ const MyBookings = () => {
     fetchBookings();
   };
 
-  const openPaymentModal = (booking) => {
+  const openPaymentModal = (booking, postService = false) => {
     setSelectedBooking(booking);
+    setIsPostServicePayment(postService);
     setShowPaymentModal(true);
   };
 
   const getStatusStyle = (status) => {
     switch (status) {
-      case "draft": return { background: "#64748b", color: "#fff" };
-      case "pending": return { background: "#f59e0b", color: "#fff" };
-      case "pending_payment": return { background: "#f59e0b", color: "#fff" };
-      case "partially_paid": return { background: "#3b82f6", color: "#fff" };
-      case "confirmed": return { background: "#10b981", color: "#fff" };
-      case "scheduled": return { background: "#8b5cf6", color: "#fff" };
-      case "ongoing": return { background: "#a855f7", color: "#fff" };
-      case "completed": return { background: "#22c55e", color: "#fff" };
-      case "cancel_requested": return { background: "#f97316", color: "#fff" };
-      case "cancelled": return { background: "#ef4444", color: "#fff" };
+      case "PENDING": return { background: "#f59e0b", color: "#fff" };
+      case "CONFIRMED": return { background: "#10b981", color: "#fff" };
+      case "SCHEDULED": return { background: "#8b5cf6", color: "#fff" };
+      case "ONGOING": return { background: "#a855f7", color: "#fff" };
+      case "COMPLETED": return { background: "#22c55e", color: "#fff" };
+      case "CANCELLED": return { background: "#ef4444", color: "#fff" };
+      case "PENDING_PAYMENT": return { background: "#f59e0b", color: "#fff" };
       default: return { background: "#334155", color: "#fff" };
     }
   };
 
   const getStatusLabel = (status) => {
     switch (status) {
-      case "draft": return "Draft";
-      case "pending": return "Pending";
-      case "pending_payment": return "Pending Payment";
-      case "partially_paid": return "Partially Paid";
-      case "confirmed": return "Confirmed";
-      case "scheduled": return "Scheduled";
-      case "ongoing": return "Ongoing";
-      case "completed": return "Completed";
-      case "cancel_requested": return "Cancel Requested";
-      case "cancelled": return "Cancelled";
+      case "PENDING": return "Pending";
+      case "CONFIRMED": return "Confirmed";
+      case "SCHEDULED": return "Scheduled";
+      case "ONGOING": return "Ongoing";
+      case "COMPLETED": return "Completed";
+      case "CANCELLED": return "Cancelled";
+      case "PENDING_PAYMENT": return "Pending Payment";
       default: return status;
     }
   };
 
   const canCancel = (status) => {
-    return ["draft", "pending_payment", "partially_paid", "confirmed"].includes(status);
+    return ["PENDING", "CONFIRMED", "SCHEDULED"].includes(status);
   };
 
   const needsPayment = (booking) => {
-    return ["pending_payment", "partially_paid"].includes(booking.status) && 
+    return booking.paymentStatus === "PENDING" && 
+           Number(booking.totalAmount) > Number(booking.amountPaid || 0);
+  };
+
+  const canSwitchToGCash = (booking) => {
+    return booking.status === "COMPLETED" &&
+           booking.paymentMethod === "CASH" &&
            Number(booking.totalAmount) > Number(booking.amountPaid || 0);
   };
 
@@ -140,10 +142,10 @@ const MyBookings = () => {
                     </span>
                   </div>
 
-                  {booking.appointmentDate && (
+                  {booking.appointmentStart && (
                     <div style={styles.dateTime}>
-                      <span style={styles.iconText}>📅 {new Date(booking.appointmentDate).toLocaleDateString()}</span>
-                      <span style={styles.iconText}>⏰ {new Date(booking.appointmentDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
+                      <span style={styles.iconText}>📅 {new Date(booking.appointmentStart).toLocaleDateString()}</span>
+                      <span style={styles.iconText}>⏰ {new Date(booking.appointmentStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
                     </div>
                   )}
 
@@ -169,12 +171,12 @@ const MyBookings = () => {
                   </div>
 
                   <div style={styles.actionRow}>
-                    {booking.status === "draft" && (
+                    {!booking.isLocked && ["PENDING", "CONFIRMED"].includes(booking.status) && (
                       <button
                         onClick={() => navigate(`/customer/book?edit=${booking.id}`)}
                         style={styles.editButton}
                       >
-                        Complete Booking
+                        Edit Booking
                       </button>
                     )}
 
@@ -184,6 +186,15 @@ const MyBookings = () => {
                         style={styles.payButton}
                       >
                         Pay ₱{amountDue.toLocaleString()}
+                      </button>
+                    )}
+
+                    {canSwitchToGCash(booking) && (
+                      <button
+                        onClick={() => openPaymentModal(booking, true)}
+                        style={{...styles.payButton, background: "var(--accent-green)"}}
+                      >
+                        Switch to GCash
                       </button>
                     )}
 
@@ -206,11 +217,16 @@ const MyBookings = () => {
       {showPaymentModal && selectedBooking && (
         <PaymentModal
           booking={selectedBooking}
+          isPostService={isPostServicePayment}
           onClose={() => {
             setShowPaymentModal(false);
             setSelectedBooking(null);
+            setIsPostServicePayment(false);
           }}
-          onSuccess={handlePaymentSuccess}
+          onSuccess={() => {
+            handlePaymentSuccess();
+            setIsPostServicePayment(false);
+          }}
         />
       )}
     </div>

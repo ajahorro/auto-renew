@@ -1,149 +1,71 @@
 import { useEffect, useState } from "react";
 import CustomerSidebar from "../../components/CustomerSideBar";
+import API from "../../api/axios";
 
 const Notifications = () => {
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const token = localStorage.getItem("token");
-
-  const [notifications,setNotifications] = useState([]);
-  const [loading,setLoading] = useState(true);
-
-useEffect(() => {
-
-  if (!token) return;
+  useEffect(() => {
+    loadNotifications();
+  }, []);
 
   const loadNotifications = async () => {
-
     try {
-
-      const res = await fetch(
-        "http://localhost:5000/api/notifications",
-        {
-          headers:{
-            Authorization:`Bearer ${token}`
-          }
-        }
-      );
-
-      let data;
-
-      try {
-        data = await res.json();
-      } catch {
-        throw new Error("Invalid server response");
-      }
-
-      setNotifications(data.notifications || []);
-
+      const res = await API.get("/notifications");
+      setNotifications(res.data.notifications || []);
     } catch (err) {
-
       console.log("Notifications fetch error", err);
-
     } finally {
       setLoading(false);
     }
-
   };
 
-  loadNotifications();
-
-}, [token]);
-
-  const markRead = async (id)=>{
-
-    try{
-
-      await fetch(
-        `http://localhost:5000/api/notifications/${id}/read`,
-        {
-          method:"PATCH",
-          headers:{
-            Authorization:`Bearer ${token}`
-          }
-        }
-      );
-
+  const markRead = async (id) => {
+    try {
+      await API.patch(`/notifications/${id}/read`);
       setNotifications(prev =>
         prev.map(n =>
-          n.id === id
-            ? { ...n, isRead:true }
-            : n
+          n.id === id ? { ...n, isRead: true } : n
         )
       );
-
-    }catch(err){
-
+    } catch (err) {
       console.log(err);
-
     }
-
   };
 
   return (
-
     <div style={styles.page}>
-
-      <CustomerSidebar active="notifications"/>
-
+      <CustomerSidebar active="notifications" />
       <div style={styles.main}>
-
-        <h1 style={styles.title}>
-          Notifications
-        </h1>
-
-        {loading && <p style={{color:"var(--text-secondary)"}}>Loading notifications...</p>}
-
+        <h1 style={styles.title}>Notifications</h1>
+        {loading && <p style={{ color: "var(--text-secondary)" }}>Loading notifications...</p>}
         {!loading && notifications.length === 0 && (
-          <p style={{color:"var(--text-secondary)"}}>No notifications yet.</p>
+          <p style={{ color: "var(--text-secondary)" }}>No notifications yet.</p>
         )}
-
         <div style={styles.list}>
-
-          {notifications.map(n=>(
-
+          {notifications.map(n => (
             <div
               key={n.id}
               style={{
                 ...styles.card,
-                background:n.isRead ? "var(--bg-secondary)" : "var(--bg-tertiary)"
+                background: n.isRead ? "var(--bg-secondary)" : "var(--bg-tertiary)"
               }}
-              onClick={()=>markRead(n.id)}
+              onClick={() => markRead(n.id)}
             >
-
               <div style={styles.row}>
-
-                <strong style={{color:"var(--text-primary)"}}>{n.title || "Notification"}</strong>
-
-                {!n.isRead && (
-                  <span style={styles.unread}>
-                    New
-                  </span>
-                )}
-
+                <strong style={{ color: "var(--text-primary)" }}>{n.title || "Notification"}</strong>
+                {!n.isRead && <span style={styles.unread}>New</span>}
               </div>
-
-              <p style={styles.message}>
-                {n.message}
-              </p>
-
+              <p style={styles.message}>{n.message}</p>
               {n.createdAt && (
-
-                <p style={styles.date}>
-                  {new Date(n.createdAt).toLocaleString()}
-                </p>
-
+                <p style={styles.date}>{new Date(n.createdAt).toLocaleString()}</p>
               )}
-
             </div>
-
           ))}
-
         </div>
-
       </div>
-
     </div>
-
   );
 
 };

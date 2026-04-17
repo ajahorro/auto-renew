@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import API from "../api/axios";
 
-const PaymentModal = ({ booking, onClose, onSuccess }) => {
+const PaymentModal = ({ booking, onClose, onSuccess, isPostService = false }) => {
   const [method, setMethod] = useState("GCASH");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [file, setFile] = useState(null);
@@ -48,12 +48,12 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (method === "GCASH") {
+    if (method === "GCASH" || isPostService) {
       if (!file) {
         toast.error("Please upload a payment receipt");
         return;
       }
-      if (!referenceNumber) {
+      if (!referenceNumber && !isPostService) {
         toast.error("Please enter the GCash reference number");
         return;
       }
@@ -63,10 +63,13 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
     try {
       const formData = new FormData();
       formData.append("bookingId", booking.id);
-      formData.append("method", method);
-      if (method === "GCASH") {
+      const finalMethod = isPostService ? "GCASH_POST_SERVICE" : method;
+      formData.append("method", finalMethod);
+      if (method === "GCASH" || isPostService) {
         formData.append("receipt", file);
-        formData.append("referenceNumber", referenceNumber);
+        if (referenceNumber) {
+          formData.append("referenceNumber", referenceNumber);
+        }
       }
 
       const res = await API.post("/payments", formData, {
@@ -94,7 +97,7 @@ const PaymentModal = ({ booking, onClose, onSuccess }) => {
     <div style={overlayStyle} onClick={onClose}>
       <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
         <div style={headerStyle}>
-          <h2 style={titleStyle}>Make Payment</h2>
+          <h2 style={titleStyle}>{isPostService ? "Post-Service Payment" : "Make Payment"}</h2>
           <button onClick={onClose} style={closeBtnStyle}>×</button>
         </div>
 

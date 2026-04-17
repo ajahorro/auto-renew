@@ -44,7 +44,7 @@ const AdminStaffManagement = () => {
     }
 
     try {
-      await API.post("/auth/create-staff", form);
+      await API.post("/admin/users", { ...form, role: "STAFF" });
       toast.success("Staff member registered successfully");
       
       setForm({ fullName: "", email: "", password: "" });
@@ -60,10 +60,11 @@ const AdminStaffManagement = () => {
   =============================== */
   const toggleStatus = async (id, currentStatus) => {
     try {
-      await API.patch(`/users/${id}/status`, { active: !currentStatus });
+      const action = currentStatus ? "deactivate" : "activate";
+      await API.patch(`/admin/users/${id}/${action}`);
       toast.success(`Staff member ${!currentStatus ? 'activated' : 'deactivated'}`);
       loadStaff();
-    } catch (err) {
+    } catch {
       toast.error("Failed to update status");
     }
   };

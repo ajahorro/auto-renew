@@ -1,8 +1,45 @@
-import { useContext, useEffect, useState } from "react";
+import { useContext, useEffect, useState, useCallback } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
 import { confirmAction } from "./ConfirmModal";
+
+// NavItem component moved outside to avoid creating it during render
+const NavItem = ({ label, route, name, isActive, onNavigate, notifCount }) => {
+  return (
+    <div
+      onClick={() => route && onNavigate(route)}
+      style={{
+        padding: "12px 16px",
+        borderRadius: "8px",
+        marginBottom: "8px",
+        cursor: "pointer",
+        transition: "0.2s all ease",
+        position: "relative",
+        background: isActive ? "var(--bg-tertiary)" : "transparent",
+        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+        fontWeight: isActive ? "600" : "400",
+        borderLeft: isActive ? "4px solid var(--accent-blue)" : "4px solid transparent"
+      }}
+    >
+      {label}
+      {name === "notifications" && notifCount > 0 && (
+        <span style={{
+          position: "absolute",
+          right: "16px",
+          top: "50%",
+          transform: "translateY(-50%)",
+          background: "var(--accent-red)",
+          color: "#fff",
+          borderRadius: "10px",
+          padding: "2px 8px",
+          fontSize: "10px",
+          fontWeight: "bold"
+        }}>{notifCount}</span>
+      )}
+    </div>
+  );
+};
 
 const AdminSidebar = ({ active }) => {
 
@@ -10,24 +47,37 @@ const AdminSidebar = ({ active }) => {
   const { logout: contextLogout } = useContext(AuthContext);
   const [notifCount, setNotifCount] = useState(0);
 
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const res = await API.get("/notifications");
       const list = res.data?.notifications || res.data || [];
       setNotifCount(list.filter(n => !n.isRead).length);
-    } catch (err) { }
-  };
+    } catch {
+      // Silently fail - notifications are not critical
+    }
+  }, []);
 
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 5000);
-    const handleUpdate = () => fetchNotifications();
-    window.addEventListener("notifUpdated", handleUpdate);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("notifUpdated", handleUpdate);
+    const initNotifications = async () => {
+      await fetchNotifications();
+      const interval = setInterval(fetchNotifications, 5000);
+      const handleUpdate = () => fetchNotifications();
+      window.addEventListener("notifUpdated", handleUpdate);
+      
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener("notifUpdated", handleUpdate);
+      };
     };
-  }, []);
+    
+    const cleanup = initNotifications();
+    
+    return () => {
+      if (typeof cleanup.then === 'function') {
+        cleanup.then(cleanupFn => cleanupFn && cleanupFn());
+      }
+    };
+  }, [fetchNotifications]);
 
   const logout = async () => {
     const confirmed = await confirmAction({
@@ -42,43 +92,6 @@ const AdminSidebar = ({ active }) => {
     
     contextLogout();
     navigate("/login");
-  };
-
-  const NavItem = ({ label, route, name }) => {
-    const isActive = active === name;
-    return (
-      <div
-        onClick={() => route && navigate(route)}
-        style={{
-          padding: "12px 16px",
-          borderRadius: "8px",
-          marginBottom: "8px",
-          cursor: "pointer",
-          transition: "0.2s all ease",
-          position: "relative",
-          background: isActive ? "var(--bg-tertiary)" : "transparent",
-          color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
-          fontWeight: isActive ? "600" : "400",
-          borderLeft: isActive ? "4px solid var(--accent-blue)" : "4px solid transparent"
-        }}
-      >
-        {label}
-        {name === "notifications" && notifCount > 0 && (
-          <span style={{
-            position: "absolute",
-            right: "16px",
-            top: "50%",
-            transform: "translateY(-50%)",
-            background: "var(--accent-red)",
-            color: "#fff",
-            borderRadius: "10px",
-            padding: "2px 8px",
-            fontSize: "10px",
-            fontWeight: "bold"
-          }}>{notifCount}</span>
-        )}
-      </div>
-    );
   };
 
   return (
@@ -106,11 +119,12 @@ const AdminSidebar = ({ active }) => {
           paddingLeft: "16px"
         }}>RENEW</div>
         <div style={{ flex: 1 }}>
-          <NavItem label="Dashboard" route="/admin" name="dashboard" />
-          <NavItem label="Schedule" route="/admin/schedule" name="schedule" />
-          <NavItem label="Booking Management" route="/admin/bookings" name="bookings" />
-          <NavItem label="Payment Verification" route="/admin/payments" name="payments" />
-          <NavItem label="Notifications" route="/admin/notifications" name="notifications" />
+          <NavItem label="Dashboard" route="/admin" name="dashboard" isActive={active === "dashboard"} onNavigate={navigate} notifCount={0} />
+          <NavItem label="Schedule" route="/admin/schedule" name="schedule" isActive={active === "schedule"} onNavigate={navigate} notifCount={0} />
+          <NavItem label="Booking Management" route="/admin/bookings" name="bookings" isActive={active === "bookings"} onNavigate={navigate} notifCount={0} />
+          <NavItem label="Payment Verification" route="/admin/payments" name="payments" isActive={active === "payments"} onNavigate={navigate} notifCount={0} />
+          <NavItem label="Analytics" route="/admin/analytics" name="analytics" isActive={active === "analytics"} onNavigate={navigate} notifCount={0} />
+          <NavItem label="Notifications" route="/admin/notifications" name="notifications" isActive={active === "notifications"} onNavigate={navigate} notifCount={notifCount} />
         </div>
       </div>
 

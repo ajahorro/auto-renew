@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { useTheme } from "../context/ThemeContext";
 import API from "../api/axios";
 import toast from "react-hot-toast";
 
 function Login() {
 
   const navigate = useNavigate();
-  const { theme } = useTheme();
   const { login } = useAuth();
 
   const [email, setEmail] = useState("");

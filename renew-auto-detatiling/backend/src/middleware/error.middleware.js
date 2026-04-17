@@ -1,5 +1,5 @@
-export const errorHandler = (err, req, res, next) => {
-  console.error("❌ ERROR:", err);
+const errorHandler = (err, req, res, next) => {
+  console.error("ERROR:", err);
 
   const status = err.status || 500;
   const message = err.message || "Internal Server Error";
@@ -9,3 +9,5 @@ export const errorHandler = (err, req, res, next) => {
     message,
   });
 };
+
+module.exports = errorHandler;

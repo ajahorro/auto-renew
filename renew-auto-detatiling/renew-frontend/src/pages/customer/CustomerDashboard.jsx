@@ -9,7 +9,7 @@ import "../../App.css";
 const CustomerDashboard = () => {
 
   const canCancel = (status) => {
-    return status === "pending" || status === "scheduled";
+    return status === "PENDING" || status === "SCHEDULED";
   };
 
   const navigate = useNavigate();
@@ -88,11 +88,11 @@ try {
     }
 
     const filtered = bookings.filter(
-      b => b.status !== "cancelled"
+      b => b.status !== "CANCELLED"
     );
 
     const activeBooking =
-      filtered.find(b => b.status !== "completed")
+      filtered.find(b => b.status !== "COMPLETED")
       || filtered[0];
 
     if (activeBooking) {
@@ -140,16 +140,14 @@ try {
     }
 
     const completedBookings = bookings
-      .filter(b => b.status === "completed")
+      .filter(b => b.status === "COMPLETED")
       .slice(0,2);
 
     setHistory(completedBookings);
 
-  }catch(err){
-
-// handled globally by axios
-
-  }finally{
+  } catch {
+    // handled globally by axios
+  } finally {
     setLoading(false);
   }
 
@@ -197,57 +195,6 @@ try {
   const balance = total - booking.amountPaid;
 
 
-  const fetchNotifications = async () => {
-  try {
-    const res = await fetch(
-      "http://localhost:5000/api/notifications",
-      {
-        headers:{
-          Authorization:`Bearer ${token}`
-        }
-      }
-    );
-
-    const data = await res.json();
-    setNotifications(data.notifications || []);
-  } catch (err) {
-    console.log(err);
-  }
-};
-
-
-const fetchBookings = async () => {
-  try {
-    const res = await fetch(
-      "http://localhost:5000/api/bookings",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    );
-
-    const data = await res.json();
-    const bookings = Array.isArray(data) ? data : data.bookings || [];
-
-    if (bookings.length === 0) {
-      setBooking({
-        id: null,
-        status: "",
-        paymentStatus: "",
-        appointmentStart: null,
-        services: [],
-        notes: ""
-      });
-      setHistory([]);
-      return;
-    }
-
-  } catch (err) {
-    console.log(err);
-  }
-};
-
   const cancelBooking = async () => {
 
   if (!booking.id) return;
@@ -265,7 +212,7 @@ const fetchBookings = async () => {
   try {
 
     const res = await fetch(
-      `http://localhost:5000/api/bookings/cancel/${booking.id}`,
+      `http://localhost:5000/api/bookings/request-cancel/${booking.id}`,
       {
         method: "PATCH",
         headers: {
@@ -312,7 +259,7 @@ const fetchBookings = async () => {
   }
 
 };
-  const isCancelled = booking.status === "cancelled";
+  const isCancelled = booking.status === "CANCELLED";
 
 return (
 
