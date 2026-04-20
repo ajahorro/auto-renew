@@ -30,6 +30,9 @@ const handleLogin = async (e) => {
       // Check if data exists and specifically contains the token
       if (data && data.success && data.token) {
         // We pass the raw token string directly to the login function
+
+        console.log(data.token);
+        
         login(data.token, data.user); 
         toast.success("Welcome back");
 

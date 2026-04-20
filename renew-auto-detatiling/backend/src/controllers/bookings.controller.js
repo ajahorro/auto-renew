@@ -1,4 +1,5 @@
-const prisma = require("../config/prisma");
+
+const prisma = require("../config/prisma");
 const LOG_REQUEST = require("../utils/logRequest");
 const { createNotification } = require("../services/notification.service");
 
@@ -2329,18 +2330,26 @@ const confirmDownpayment = async (req, res) => {
 const getBookings = async (req, res) => {
   try {
     LOG_REQUEST(req, "GET_BOOKINGS");
-    
+
     if (!req.user || !req.user.id) {
-      return res.status(401).json({ 
-        success: false, 
-        message: "Authentication required" 
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required"
       });
     }
 
     const role = req.user.role;
     const userId = String(req.user.id);
+    const { status } = req.query; // ✅ FIX: support status filter
+
     let where = {};
 
+    // ✅ STATUS FILTER (admin/staff/customer all apply it)
+    if (status) {
+      where.status = status;
+    }
+
+    // role-based filtering
     if (role === "CUSTOMER") {
       where.customerId = userId;
     } else if (role === "STAFF") {
@@ -2371,10 +2380,14 @@ const getBookings = async (req, res) => {
       incurredCost: booking.incurredCost ? Number(booking.incurredCost) : 0,
       refundAmount: booking.refundAmount ? Number(booking.refundAmount) : 0,
       equipmentCost: booking.equipmentCost ? Number(booking.equipmentCost) : 0,
-      downpaymentAmount: booking.downpaymentAmount ? Number(booking.downpaymentAmount) : null,
+      downpaymentAmount: booking.downpaymentAmount
+        ? Number(booking.downpaymentAmount)
+        : null,
       items: (booking.items || []).map(item => ({
         ...item,
-        priceAtBooking: item.priceAtBooking ? Number(item.priceAtBooking) : 0
+        priceAtBooking: item.priceAtBooking
+          ? Number(item.priceAtBooking)
+          : 0
       })),
       payments: (booking.payments || []).map(payment => ({
         ...payment,
@@ -2385,8 +2398,8 @@ const getBookings = async (req, res) => {
     res.json({ bookings: sanitizedBookings, success: true });
   } catch (error) {
     console.error("ERROR [GET_BOOKINGS]:", error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: "Failed to fetch bookings",
       error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
@@ -2396,42 +2409,70 @@ const getBookings = async (req, res) => {
 const getBookingById = async (req, res) => {
   try {
     LOG_REQUEST(req, "GET_BOOKING_BY_ID");
-    
+
     if (!req.user || !req.user.id) {
-      return res.status(401).json({ success: false, message: "Authentication required" });
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required"
+      });
     }
 
-    const id = parseBookingId(req);
-    if (!id) {
-      return res.status(400).json({ success: false, message: "Invalid booking ID" });
+    // ✅ FIX: replace parseBookingId (this was your bug source)
+    const id = Number(req.params.id);
+
+    if (!id || isNaN(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid booking ID"
+      });
     }
 
     let booking;
+
     try {
       booking = await prisma.booking.findUnique({
         where: { id },
         include: {
-          customer: { select: { id: true, fullName: true, email: true, phone: true } },
-          assignedStaff: { select: { id: true, fullName: true } },
-          items: { include: { service: true } },
+          customer: {
+            select: { id: true, fullName: true, email: true, phone: true }
+          },
+          assignedStaff: {
+            select: { id: true, fullName: true }
+          },
+          items: {
+            include: { service: true }
+          },
           payments: true
         }
       });
     } catch (dbError) {
       console.error("Database error fetching booking:", dbError);
-      return res.status(500).json({ 
-        success: false, 
-        message: "Database error: " + (process.env.NODE_ENV === "development" ? dbError.message : "Failed to fetch booking"),
-        error: process.env.NODE_ENV === "development" ? dbError.message : undefined
+      return res.status(500).json({
+        success: false,
+        message: "Database error",
+        error:
+          process.env.NODE_ENV === "development"
+            ? dbError.message
+            : undefined
       });
     }
 
     if (!booking) {
-      return res.status(404).json({ success: false, message: "Booking not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found"
+      });
     }
 
-    if (req.user.role === "CUSTOMER" && String(booking.customerId) !== String(req.user.id)) {
-      return res.status(403).json({ success: false, message: "Unauthorized access" });
+    // role protection
+    if (
+      req.user.role === "CUSTOMER" &&
+      String(booking.customerId) !== String(req.user.id)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized access"
+      });
     }
 
     const sanitizedBooking = {
@@ -2441,10 +2482,14 @@ const getBookingById = async (req, res) => {
       incurredCost: booking.incurredCost ? Number(booking.incurredCost) : 0,
       refundAmount: booking.refundAmount ? Number(booking.refundAmount) : 0,
       equipmentCost: booking.equipmentCost ? Number(booking.equipmentCost) : 0,
-      downpaymentAmount: booking.downpaymentAmount ? Number(booking.downpaymentAmount) : null,
+      downpaymentAmount: booking.downpaymentAmount
+        ? Number(booking.downpaymentAmount)
+        : null,
       items: (booking.items || []).map(item => ({
         ...item,
-        priceAtBooking: item.priceAtBooking ? Number(item.priceAtBooking) : 0
+        priceAtBooking: item.priceAtBooking
+          ? Number(item.priceAtBooking)
+          : 0
       })),
       payments: (booking.payments || []).map(payment => ({
         ...payment,
@@ -2455,10 +2500,11 @@ const getBookingById = async (req, res) => {
     res.json({ booking: sanitizedBooking, success: true });
   } catch (error) {
     console.error("GET BOOKING BY ID ERROR:", error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: "Failed to fetch booking details",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined
+      error:
+        process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
 };
@@ -2611,6 +2657,73 @@ const requestCustomerCancel = async (req, res) => {
   }
 };
 
+const getAdminBookings = async (req, res) => {
+  try {
+    LOG_REQUEST(req, "GET_ADMIN_BOOKINGS");
+
+    if (!req.user?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const { status } = req.query;
+
+    let where = {};
+
+    // 🔥 APPLY STATUS FILTER IF PROVIDED
+    if (status) {
+      where.status = status.toUpperCase();
+    }
+
+    const bookings = await prisma.booking.findMany({
+      where,
+      include: {
+        customer: {
+          select: { id: true, fullName: true, email: true, phone: true },
+        },
+        assignedStaff: {
+          select: { id: true, fullName: true },
+        },
+        items: {
+          include: { service: true },
+        },
+        payments: true,
+      },
+      orderBy: { appointmentStart: "desc" },
+    });
+
+    const sanitizedBookings = bookings.map((booking) => ({
+      ...booking,
+      totalAmount: Number(booking.totalAmount || 0),
+      amountPaid: Number(booking.amountPaid || 0),
+      incurredCost: Number(booking.incurredCost || 0),
+      refundAmount: Number(booking.refundAmount || 0),
+      equipmentCost: Number(booking.equipmentCost || 0),
+      downpaymentAmount: booking.downpaymentAmount
+        ? Number(booking.downpaymentAmount)
+        : null,
+      items: (booking.items || []).map((item) => ({
+        ...item,
+        priceAtBooking: Number(item.priceAtBooking || 0),
+      })),
+      payments: (booking.payments || []).map((payment) => ({
+        ...payment,
+        amount: Number(payment.amount || 0),
+      })),
+    }));
+
+    res.json({ success: true, bookings: sanitizedBookings });
+  } catch (error) {
+    console.error("GET_ADMIN_BOOKINGS ERROR:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch admin bookings",
+    });
+  }
+};
+
 module.exports = {
   createBooking,
   getBookings,
@@ -2626,6 +2739,7 @@ module.exports = {
   addServiceToBooking,
   getAvailability,
   getAdminAnalytics,
+  getAdminBookings,
   getDailySchedule,
   createAddonRequest,
   getAddonRequests,

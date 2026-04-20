@@ -7,6 +7,8 @@ async function main() {
 
   console.log("Seeding users...");
 
+  console.log("DATABASE_URL:", process.env.DATABASE_URL);
+
   const users = [
     // Admin
     { email: "admin@renew", password: "admin123", fullName: "Admin User", role: "ADMIN" },

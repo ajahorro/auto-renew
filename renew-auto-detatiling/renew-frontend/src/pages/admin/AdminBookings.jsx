@@ -22,11 +22,14 @@ const AdminBookings = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
+
   const loadBookings = useCallback(async () => {
     setLoading(true);
     try {
-      const url = filterStatus ? `/bookings/admin?status=${filterStatus}` : "/bookings/admin";
+    const url = `/bookings/admin${filterStatus ? `?status=${filterStatus}` : ""}`;
       const res = await API.get(url);
+
+    
       setBookings(res.data.bookings || res.data || []);
     } catch (err) {
       console.error(err);

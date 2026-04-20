@@ -5,6 +5,7 @@ const authenticate = require("../middleware/auth.middleware");
 const authorize = require("../middleware/rbac.middleware");
 
 const {
+  getAdminBookings,
   createBooking,
   getBookings,
   getBookingById,
@@ -28,11 +29,22 @@ const {
   requestCancelBooking
 } = require("../controllers/bookings.controller");
 
+/* GET ADMIN BOOKINGS */
+
+router.get(
+  "/admin",
+  authenticate,
+  authorize("ADMIN", "SUPER_ADMIN"),
+  getAdminBookings
+);
+
 /* CREATE BOOKING */
 router.post("/", authenticate, createBooking);
 
 /* AVAILABILITY - must be before /:id */
 router.get("/availability", getAvailability);
+
+
 
 /* GET BOOKINGS */
 router.get("/", authenticate, getBookings);

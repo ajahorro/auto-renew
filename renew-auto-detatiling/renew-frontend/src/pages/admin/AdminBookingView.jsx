@@ -124,7 +124,7 @@ const AdminBookingView = () => {
 
   if (loading) return (
     <div style={styles.page}>
-      <AdminSidebar active="bookings" />
+      <AdminSideBar active="bookings" />
       <div style={styles.main}>Loading...</div>
     </div>
   );

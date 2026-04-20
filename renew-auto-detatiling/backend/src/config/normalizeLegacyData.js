@@ -15,7 +15,7 @@ async function normalizeLegacyBookingData() {
       query: `
         UPDATE "Booking"
         SET "paymentStatus" = 'PENDING'
-        WHERE "paymentStatus" IN ('UNPAID', 'unpaid')
+        WHERE "paymentStatus"::text IN ('UNPAID', 'unpaid')
       `
     }
   ];
