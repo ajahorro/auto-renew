@@ -20,11 +20,11 @@ const StaffTasks = () => {
       const res = await API.get("/bookings");
       const data = res.data;
       const allBookings = Array.isArray(data) ? data : (data.bookings || []);
-      // Staff should only see CONFIRMED/SCHEDULED/ONGOING bookings per spec
-      const filtered = allBookings.filter(b => 
-        b.status === "CONFIRMED" || 
-        b.status === "SCHEDULED" ||
-        b.status === "ONGOING"
+      const filtered = allBookings.filter(b =>
+        b.status === "CONFIRMED" ||
+        b.status === "ONGOING" ||
+        b.status === "COMPLETED" ||
+        b.status === "CANCELLED"
       );
       setBookings(filtered);
     } catch (err) {
@@ -73,7 +73,7 @@ const StaffTasks = () => {
   const getStatusColor = (status) => {
     const colors = {
       PENDING: "#eab308",
-      SCHEDULED: "#3b82f6",
+      CONFIRMED: "#3b82f6",
       ONGOING: "#f97316",
       COMPLETED: "#22c55e",
       CANCELLED: "#ef4444"
@@ -339,7 +339,7 @@ const StaffTasks = () => {
                     </p>
                   ) : (
                     <div style={styles.actionRow}>
-                      {b.status === "SCHEDULED" && (
+                      {b.status === "CONFIRMED" && (
                         <button
                           style={styles.startBtn}
                           disabled={updatingId === b.id}
@@ -359,7 +359,7 @@ const StaffTasks = () => {
                         </button>
                       )}
 
-                      {(b.status === "CONFIRMED" || b.status === "SCHEDULED") && (
+                      {b.status === "CONFIRMED" && (
                         <button
                           style={styles.cancelBtn}
                           disabled={updatingId === b.id}

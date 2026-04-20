@@ -1,330 +1,308 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import API from "../../api/axios";
-import AdminSidebar from "../../components/AdminSidebar";
-
-const styles = {
-
-  page:{
-    display:"flex",
-    background:"var(--bg-primary)",
-    minHeight:"100vh",
-    fontFamily:"Poppins, system-ui"
-  },
-
-  main:{
-    marginLeft:"280px",
-    padding:"40px",
-    width:"100%",
-    color:"var(--text-primary)"
-  },
-
-  title:{
-    marginBottom:"30px"
-  },
-
-  grid:{
-    display:"grid",
-    gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",
-    gap:"20px"
-  },
-
-  card:{
-    background:"var(--card-bg)",
-    padding:"20px",
-    borderRadius:"14px",
-    border:"1px solid var(--border-color)"
-  },
-
-  row:{
-    display:"flex",
-    justifyContent:"space-between",
-    marginBottom:"6px"
-  },
-
-  status:{
-    background:"var(--bg-tertiary)",
-    padding:"4px 10px",
-    borderRadius:"6px"
-  },
-
-  services:{
-    opacity:0.8,
-    marginBottom:"8px"
-  },
-
-  section:{
-    marginTop:"10px"
-  },
-
-  btn:{
-    padding:"8px 12px",
-    border:"none",
-    borderRadius:"6px",
-    background:"var(--accent-blue)",
-    cursor:"pointer",
-    color:"#fff"
-  },
-
-  statusBtn:{
-    marginRight:"8px",
-    padding:"6px 10px",
-    border:"none",
-    borderRadius:"6px",
-    background:"var(--accent-green)",
-    cursor:"pointer"
-  },
-
-  statusBadge:{
-  padding:"4px 10px",
-  borderRadius:"999px",
-  fontSize:"12px",
-  fontWeight:"600",
-  color:"#fff",
-  display:"inline-block"
-},
-
-  cancelBtn:{
-    padding:"6px 10px",
-    border:"none",
-    borderRadius:"6px",
-    background:"var(--accent-red)",
-    cursor:"pointer",
-    color:"#fff"
-  } ,
-
-th:{
-  padding:"14px 18px",
-  fontWeight:"600",
-  color:"var(--text-secondary)",
-  fontSize:"13px",
-  borderBottom:"1px solid var(--border-color)"
-},
-
-td:{
-  padding:"16px 18px",
-  color:"var(--text-primary)",
-  fontSize:"14px",
-  borderBottom:"1px solid var(--border-color)"
-},
-
-table:{
-  width:"100%",
-  borderCollapse:"separate",
-  borderSpacing:"0 8px"
-},
-
-toolbar:{
-  display:"flex",
-  justifyContent:"space-between",
-  marginBottom:"20px",
-  gap:"10px"
-},
-
-search:{
-  flex:1,
-  padding:"10px 14px",
-  borderRadius:"8px",
-  border:"1px solid var(--border-color)",
-  background:"var(--bg-primary)",
-  color:"var(--text-primary)"
-},
-
-filter:{
-  padding:"10px 12px",
-  borderRadius:"8px",
-  border:"1px solid var(--border-color)",
-  background:"var(--bg-primary)",
-  color:"var(--text-primary)"
-}
-
-    };
+import AdminSideBar from "../../components/AdminSideBar";
+import BookingStatusBadge from "../../components/BookingStatusBadge";
+import PaymentStatusBadge from "../../components/PaymentStatusBadge";
+import { 
+  Search, 
+  Filter, 
+  ExternalLink, 
+  Calendar, 
+  User, 
+  MoreVertical 
+} from "lucide-react";
 
 const AdminBookings = () => {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
+  const filterStatus = searchParams.get("status");
 
   const [bookings, setBookings] = useState([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  /* LOAD BOOKINGS */
   const loadBookings = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await API.get("/bookings");
-      
-      // Handle the data structure from our backend
-      const list = Array.isArray(res.data) 
-        ? res.data 
-        : (res.data.bookings || []);
-        
-      setBookings(list);
+      const url = filterStatus ? `/bookings/admin?status=${filterStatus}` : "/bookings/admin";
+      const res = await API.get(url);
+      setBookings(res.data.bookings || res.data || []);
     } catch (err) {
-      console.error("Bookings load error", err);
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [filterStatus]);
 
   useEffect(() => {
     loadBookings();
   }, [loadBookings]);
 
-  /* HANDLE STATUS FILTER CHANGE */
-  const handleStatusChange = (status) => {
-    setStatusFilter(status);
-    if (status) {
-      setSearchParams({ status });
-    } else {
-      setSearchParams({});
-    }
-  };
+  const filteredBookings = bookings.filter(b => 
+    b.customer?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    b.id.toString().includes(searchTerm) ||
+    b.vehicleType?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "PENDING": return "#facc15";
-      case "SCHEDULED": 
-      case "CONFIRMED": return "#3b82f6";
-      case "ONGOING": return "#a855f7";
-      case "COMPLETED": return "#22c55e";
-      case "CANCELLED": return "#ef4444";
-      default: return "#64748b";
-    }
-  };
-
-  const getPaymentColor = (payment) => {
-    switch (payment) {
-      case "COMPLETED": return "#22c55e";
-      case "APPROVED": return "#3b82f6";
-      case "PENDING": return "#ef4444";
-      default: return "#64748b";
-    }
-  };
-
-  /* SEARCH & FILTER LOGIC */
-  const filteredBookings = bookings.filter((b) => {
-    const matchesSearch = 
-      b.customer?.fullName?.toLowerCase().includes(search.toLowerCase()) ||
-      b.id.toString().includes(search);
-      
-    const matchesStatus = statusFilter === "" || b.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
-  });
-
-return (
+  return (
     <div style={styles.page}>
-      <AdminSidebar active="bookings" />
-
+      <AdminSideBar active="bookings" />
       <div style={styles.main}>
-        <h1 style={styles.title}>Booking Management</h1>
-
-        {/* SEARCH & FILTER BAR */}
-        <div style={styles.toolbar}>
-          <input
-            type="text"
-            placeholder="Search by ID or customer name..."
-            style={styles.search}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          <select
-            style={styles.filter}
-            value={statusFilter}
-            onChange={(e) => handleStatusChange(e.target.value)}
-          >
-            <option value="">All Status</option>
-            <option value="PENDING">Pending</option>
-            <option value="SCHEDULED">Scheduled</option>
-            <option value="ONGOING">Ongoing</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
+        <div style={styles.header}>
+          <h1 style={styles.title}>
+            {filterStatus ? `${filterStatus} Bookings` : "All Bookings"}
+          </h1>
+          <div style={styles.actions}>
+            <div style={styles.searchBox}>
+              <Search size={18} style={styles.searchIcon} />
+              <input 
+                placeholder="Search name, ID or vehicle..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={styles.searchInput}
+              />
+            </div>
+          </div>
         </div>
 
-        <div style={{ width: "100%" }}>
-          <table style={styles.table}>
-            <thead>
-              <tr style={{ textAlign: "left" }}>
-                <th style={styles.th}>ID</th>
-                <th style={styles.th}>Customer</th>
-                <th style={styles.th}>Total</th>
-                <th style={styles.th}>Status</th>
-                <th style={styles.th}>Payment</th>
-                <th style={styles.th}>Method</th>
-                <th style={styles.th}>Appointment</th>
-                <th style={styles.th}>Vehicle</th>
-                <th style={styles.th}>Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredBookings.length > 0 ? (
-                filteredBookings.map((b) => (
-                  <tr key={b.id} style={{ background: "var(--card-bg)" }}>
-                    <td style={styles.td}>#{b.id}</td>
-                    <td style={styles.td}>{b.customer?.fullName || "Guest"}</td>
-                    <td style={styles.td}>₱{b.totalAmount?.toLocaleString()}</td>
-
-                    {/* STATUS BADGE */}
+        {loading ? (
+          <div style={styles.loading}>Loading bookings...</div>
+        ) : (
+          <div style={styles.tableWrapper}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>ID</th>
+                  <th style={styles.th}>CUSTOMER</th>
+                  <th style={styles.th}>VEHICLE</th>
+                  <th style={styles.th}>DATE & TIME</th>
+                  <th style={styles.th}>STATUS</th>
+                  <th style={styles.th}>PAYMENT</th>
+                  <th style={styles.th}>AMOUNT</th>
+                  <th style={styles.th}>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBookings.map((b) => (
+                  <tr key={b.id} style={styles.tr}>
                     <td style={styles.td}>
-                      <span style={{ ...styles.statusBadge, background: getStatusColor(b.status) }}>
-                        {b.status}
-                      </span>
+                      <span style={styles.idBadge}>#{b.id.toString().padStart(4, '0')}</span>
                     </td>
-
-                    {/* PAYMENT BADGE */}
                     <td style={styles.td}>
-                      <span style={{ ...styles.statusBadge, background: getPaymentColor(b.paymentStatus) }}>
-                        {b.paymentStatus}
-                      </span>
+                      <div style={styles.customerInfo}>
+                        <div style={styles.avatar}>{b.customer?.fullName?.[0]}</div>
+                        <div style={styles.nameGroup}>
+                          <span style={styles.name}>{b.customer?.fullName}</span>
+                          <span style={styles.phone}>{b.contactNumber || b.customer?.phone}</span>
+                        </div>
+                      </div>
                     </td>
-
-                    {/* PAYMENT METHOD */}
                     <td style={styles.td}>
-                      <span style={{ ...styles.statusBadge, background: b.paymentMethod === "GCASH" ? "#8b5cf6" : "#64748b" }}>
-                        {b.paymentMethod || "—"}
-                      </span>
+                      <div style={styles.vehicleGroup}>
+                        <span style={styles.vehicleType}>{b.vehicleType}</span>
+                        <span style={styles.plate}>{b.plateNumber}</span>
+                      </div>
                     </td>
-
-                    {/* DATE & TIME */}
                     <td style={styles.td}>
-                      {b.appointmentStart ? (
-                        <>
-                          <div style={{ fontSize: '13px' }}>
-                            {new Date(b.appointmentStart).toLocaleDateString("en-PH", { dateStyle: "medium" })}
-                          </div>
-                          <div style={{ opacity: 0.6, fontSize: "11px" }}>
-                            {new Date(b.appointmentStart).toLocaleTimeString("en-PH", { timeStyle: "short" })}
-                          </div>
-                        </>
-                      ) : "—"}
+                      <div style={styles.dateGroup}>
+                        <span style={styles.date}>{new Date(b.appointmentStart).toLocaleDateString()}</span>
+                        <span style={styles.time}>{new Date(b.appointmentStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
                     </td>
-
-                    <td style={styles.td}>{b.vehicleType || "—"}</td>
-
                     <td style={styles.td}>
-                      <button
-                        style={styles.btn}
+                      <BookingStatusBadge status={b.status} />
+                    </td>
+                    <td style={styles.td}>
+                      <PaymentStatusBadge status={b.paymentStatus} />
+                    </td>
+                    <td style={styles.td}>
+                      <span style={styles.amount}>₱{Number(b.totalAmount).toLocaleString()}</span>
+                    </td>
+                    <td style={styles.td}>
+                      <button 
+                        style={styles.viewBtn}
                         onClick={() => navigate(`/admin/bookings/${b.id}`)}
                       >
-                        View Details
+                        <ExternalLink size={16} />
+                        View
                       </button>
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="9" style={{ ...styles.td, textAlign: 'center', opacity: 0.5 }}>
-                    No bookings found matching your search.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+            {filteredBookings.length === 0 && (
+              <div style={styles.emptyState}>No bookings found matching your search.</div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
+};
+
+const styles = {
+  page: {
+    display: "flex",
+    background: "var(--bg-primary)",
+    minHeight: "100vh",
+    fontFamily: "Poppins, system-ui"
+  },
+  main: {
+    marginLeft: "280px",
+    padding: "40px",
+    width: "100%",
+    color: "var(--text-primary)"
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "30px"
+  },
+  title: {
+    fontSize: "28px",
+    fontWeight: "800",
+    margin: 0
+  },
+  searchBox: {
+    position: "relative",
+    width: "300px"
+  },
+  searchIcon: {
+    position: "absolute",
+    left: "12px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    color: "var(--text-secondary)"
+  },
+  searchInput: {
+    width: "100%",
+    padding: "10px 12px 10px 40px",
+    borderRadius: "10px",
+    border: "1px solid var(--border-color)",
+    background: "var(--card-bg)",
+    color: "var(--text-primary)",
+    outline: "none"
+  },
+  loading: {
+    textAlign: "center",
+    padding: "100px",
+    color: "var(--text-secondary)"
+  },
+  tableWrapper: {
+    background: "var(--card-bg)",
+    borderRadius: "16px",
+    border: "1px solid var(--border-color)",
+    overflow: "hidden"
+  },
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
+    textAlign: "left"
+  },
+  th: {
+    padding: "16px 20px",
+    background: "rgba(255,255,255,0.02)",
+    color: "var(--text-secondary)",
+    fontSize: "12px",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    borderBottom: "1px solid var(--border-color)"
+  },
+  tr: {
+    borderBottom: "1px solid var(--border-color)",
+    transition: "0.2s"
+  },
+  td: {
+    padding: "16px 20px",
+    verticalAlign: "middle"
+  },
+  idBadge: {
+    fontSize: "12px",
+    fontWeight: "700",
+    color: "var(--accent-blue)",
+    background: "rgba(56, 189, 248, 0.1)",
+    padding: "4px 8px",
+    borderRadius: "6px"
+  },
+  customerInfo: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px"
+  },
+  avatar: {
+    width: "36px",
+    height: "36px",
+    borderRadius: "10px",
+    background: "var(--accent-blue)",
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "700"
+  },
+  nameGroup: {
+    display: "flex",
+    flexDirection: "column"
+  },
+  name: {
+    fontSize: "14px",
+    fontWeight: "600"
+  },
+  phone: {
+    fontSize: "12px",
+    color: "var(--text-secondary)"
+  },
+  vehicleGroup: {
+    display: "flex",
+    flexDirection: "column"
+  },
+  vehicleType: {
+    fontSize: "14px",
+    fontWeight: "500"
+  },
+  plate: {
+    fontSize: "12px",
+    color: "var(--text-secondary)"
+  },
+  dateGroup: {
+    display: "flex",
+    flexDirection: "column"
+  },
+  date: {
+    fontSize: "14px",
+    fontWeight: "500"
+  },
+  time: {
+    fontSize: "12px",
+    color: "var(--accent-blue)"
+  },
+  amount: {
+    fontWeight: "700",
+    color: "var(--text-primary)"
+  },
+  viewBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    border: "none",
+    background: "var(--bg-tertiary)",
+    color: "var(--text-primary)",
+    fontSize: "13px",
+    fontWeight: "600",
+    cursor: "pointer",
+    transition: "0.2s"
+  },
+  emptyState: {
+    padding: "40px",
+    textAlign: "center",
+    color: "var(--text-secondary)"
+  }
 };
 
 export default AdminBookings;

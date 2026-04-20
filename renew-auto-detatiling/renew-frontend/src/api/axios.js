@@ -21,21 +21,27 @@ API.interceptors.response.use(
   (response) => response,
 
   (error) => {
-    // Only show global toast for non-operation errors
-    // Operations (status updates, assign staff) will handle their own errors
-    const isOperationError = error.config?.url?.includes('/status') || 
-                             error.config?.url?.includes('/cancel') ||
-                             error.config?.url?.includes('/assign') ||
-                             error.config?.url?.includes('/availability');
+    // Don't show global toast for login/register operations - they handle their own errors
+    const isAuthError = error.config?.url?.includes('/login') ||
+                        error.config?.url?.includes('/register');
     
-    if (!isOperationError) {
-      const message =
-        error.response?.data?.message ||
-        error.message ||
-        "Something went wrong";
+    if (!isAuthError) {
+      // Only show global toast for non-operation errors
+      // Operations (status updates, assign staff) will handle their own errors
+      const isOperationError = error.config?.url?.includes('/status') || 
+                               error.config?.url?.includes('/cancel') ||
+                               error.config?.url?.includes('/assign') ||
+                               error.config?.url?.includes('/availability');
+      
+      if (!isOperationError) {
+        const message =
+          error.response?.data?.message ||
+          error.message ||
+          "Something went wrong";
 
-      // 🔥 GLOBAL ERROR TOAST
-      toast.error(message);
+        // 🔥 GLOBAL ERROR TOAST
+        toast.error(message);
+      }
     }
 
     if (error.response?.status === 401) {

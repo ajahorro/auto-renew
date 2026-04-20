@@ -1,31 +1,7 @@
 const prisma = require("../config/prisma");
-const { sendEmail } = require("../services/email.service");
 
-const createNotification = async (userId, data) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true, notifyEmail: true, notifyWeb: true }
-    });
 
-    if (!user) return null;
-    const hasWeb = user.notifyWeb !== false;
-    const hasEmail = user.notifyEmail !== false;
-    if (!hasWeb && !hasEmail) return null;
 
-    if (hasWeb) {
-      await prisma.notification.create({
-        data: { userId, title: data.title, message: data.message, type: data.type || "GENERAL", actionType: data.actionType, actorId: data.actorId, actorName: data.actorName, targetId: data.targetId, targetName: data.targetName }
-      });
-    }
-
-    if (hasEmail && user.email) {
-      sendEmail(user.email, `[RENEW] ${data.title}`, `<div style="font-family: Arial;"><h2>${data.title}</h2><p>${data.message}</p></div>`).catch(() => {});
-    }
-  } catch (error) {
-    console.error("Failed to create notification:", error);
-  }
-};
 
 const SEND_MESSAGE = async (req, res) => {
   try {

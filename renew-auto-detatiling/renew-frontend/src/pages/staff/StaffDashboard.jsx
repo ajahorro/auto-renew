@@ -1,11 +1,25 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import API from "../../api/axios";
 import StaffSidebar from "../../components/StaffSidebar";
 import toast from "react-hot-toast";
 import { confirmAction } from "../../components/ConfirmModal";
+import BookingStatusBadge from "../../components/BookingStatusBadge";
+import PaymentStatusBadge from "../../components/PaymentStatusBadge";
+import { 
+  ClipboardList, 
+  Calendar, 
+  Clock, 
+  User, 
+  Car, 
+  Package, 
+  Play, 
+  CheckCircle2, 
+  XCircle, 
+  ArrowRight,
+  Info
+} from "lucide-react";
 
 const StaffDashboard = () => {
-
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
@@ -13,22 +27,16 @@ const StaffDashboard = () => {
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedBooking, setSelectedBooking] = useState(null);
 
-  useEffect(() => {
-    loadAssignedBookings();
-  }, []);
-
-  const loadAssignedBookings = async () => {
+  const loadAssignedBookings = useCallback(async () => {
     try {
       const res = await API.get("/bookings");
       const data = res.data;
       const allBookings = Array.isArray(data) ? data : (data.bookings || []);
-      // Staff should only see CONFIRMED bookings to work on
-      // After service they can see ONGOING to complete
-      // After completion they see COMPLETED
-      const filtered = allBookings.filter(b => 
-        b.status === "CONFIRMED" || 
-        b.status === "SCHEDULED" ||
-        b.status === "ONGOING"
+      const filtered = allBookings.filter(b =>
+        b.status === "CONFIRMED" ||
+        b.status === "ONGOING" ||
+        b.status === "COMPLETED" ||
+        b.status === "CANCELLED"
       );
       setBookings(filtered);
     } catch (err) {
@@ -36,7 +44,11 @@ const StaffDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadAssignedBookings();
+  }, [loadAssignedBookings]);
 
   const updateStatus = async (bookingId, status) => {
     try {
@@ -74,17 +86,6 @@ const StaffDashboard = () => {
     }
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      PENDING: "#eab308",
-      SCHEDULED: "#3b82f6",
-      ONGOING: "#f97316",
-      COMPLETED: "#22c55e",
-      CANCELLED: "#ef4444"
-    };
-    return colors[status] || "#64748b";
-  };
-
   const formatDate = (dateStr) => {
     if (!dateStr) return "No date";
     const date = new Date(dateStr);
@@ -100,7 +101,6 @@ const StaffDashboard = () => {
   const activeBookings = bookings.filter(b => b.status !== "COMPLETED" && b.status !== "CANCELLED");
   const completedBookings = bookings.filter(b => b.status === "COMPLETED" || b.status === "CANCELLED");
 
-  // Get bookings for schedule view
   const getScheduleBookings = () => {
     return bookings.filter(b => {
       if (!b.appointmentStart) return false;
@@ -109,199 +109,16 @@ const StaffDashboard = () => {
     });
   };
 
-  const styles = {
-    page: {
-      display: "flex",
-      background: "var(--bg-primary)",
-      minHeight: "100vh",
-      fontFamily: "Poppins, system-ui"
-    },
-    main: {
-      marginLeft: "260px",
-      padding: "40px",
-      width: "100%",
-      color: "var(--text-primary)"
-    },
-    viewToggle: {
-      display: "flex",
-      gap: "12px",
-      marginBottom: "30px"
-    },
-    viewBtn: {
-      padding: "10px 20px",
-      borderRadius: "8px",
-      border: "none",
-      cursor: "pointer",
-      fontWeight: "500",
-      fontSize: "14px"
-    },
-    loading: { opacity: 0.7 },
-    emptyState: {
-      textAlign: "center",
-      padding: "60px 20px",
-      background: "var(--card-bg)",
-      borderRadius: "14px"
-    },
-    section: { marginBottom: "40px" },
-    sectionTitle: { fontSize: "18px", marginBottom: "16px", color: "var(--text-secondary)" },
-    grid: {
-      display: "grid",
-      gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
-      gap: "20px"
-    },
-    card: {
-      background: "var(--card-bg)",
-      padding: "20px",
-      borderRadius: "14px",
-      border: "1px solid var(--border-color)"
-    },
-    cardHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "16px"
-    },
-    statusBadge: {
-      padding: "4px 12px",
-      borderRadius: "20px",
-      fontSize: "11px",
-      fontWeight: "600",
-      color: "#fff"
-    },
-    bookingId: { fontSize: "12px", opacity: 0.5, color: "var(--text-secondary)" },
-    label: {
-      fontSize: "11px",
-      textTransform: "uppercase",
-      color: "var(--text-secondary)",
-      marginBottom: "2px"
-    },
-    customerName: {
-      fontSize: "16px",
-      fontWeight: "600",
-      color: "var(--text-primary)"
-    },
-    value: { fontSize: "14px", color: "var(--text-primary)" },
-    services: { fontSize: "14px", color: "var(--text-secondary)" },
-    totalRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      padding: "12px 0",
-      borderTop: "1px solid var(--border-color)",
-      borderBottom: "1px solid var(--border-color)",
-      marginBottom: "16px",
-      fontWeight: "600",
-      color: "var(--text-primary)"
-    },
-    totalAmount: { color: "var(--accent-green)" },
-    actionRow: { display: "flex", gap: "10px", flexWrap: "wrap" },
-    startBtn: {
-      padding: "10px 16px",
-      border: "none",
-      borderRadius: "8px",
-      background: "var(--accent-blue)",
-      color: "#fff",
-      cursor: "pointer",
-      fontWeight: "600",
-      fontSize: "13px"
-    },
-    completeBtn: {
-      padding: "10px 16px",
-      border: "none",
-      borderRadius: "8px",
-      background: "var(--accent-green)",
-      color: "#fff",
-      cursor: "pointer",
-      fontWeight: "600",
-      fontSize: "13px"
-    },
-    cancelBtn: {
-      padding: "10px 16px",
-      border: "none",
-      borderRadius: "8px",
-      background: "var(--accent-red)",
-      color: "#fff",
-      cursor: "pointer",
-      fontWeight: "600",
-      fontSize: "13px"
-    },
-    viewDetailsBtn: {
-      padding: "10px 16px",
-      border: "none",
-      borderRadius: "8px",
-      background: "var(--bg-tertiary)",
-      color: "var(--text-primary)",
-      cursor: "pointer",
-      fontWeight: "600",
-      fontSize: "13px"
-    },
-    readOnly: {
-      fontSize: "12px",
-      opacity: 0.6,
-      textAlign: "center",
-      fontStyle: "italic",
-      color: "var(--text-secondary)"
-    },
-    scheduleCard: {
-      background: "var(--card-bg)",
-      padding: "20px",
-      borderRadius: "14px",
-      border: "1px solid var(--border-color)",
-      marginBottom: "20px"
-    },
-    scheduleHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "20px"
-    },
-    dateInput: {
-      padding: "10px",
-      borderRadius: "8px",
-      border: "1px solid var(--border-color)",
-      background: "var(--bg-primary)",
-      color: "var(--text-primary)",
-      cursor: "pointer"
-    },
-    modal: {
-      position: "fixed",
-      top: 0, left: 0, right: 0, bottom: 0,
-      background: "rgba(0,0,0,0.8)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000
-    },
-    modalContent: {
-      background: "var(--card-bg)",
-      padding: "30px",
-      borderRadius: "16px",
-      width: "100%",
-      maxWidth: "600px",
-      maxHeight: "80vh",
-      overflow: "auto",
-      border: "1px solid var(--border-color)"
-    },
-    modalHeader: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "20px"
-    },
-    modalClose: {
-      background: "none",
-      border: "none",
-      color: "var(--text-primary)",
-      fontSize: "24px",
-      cursor: "pointer"
-    }
-  };
-
   return (
     <div style={styles.page}>
       <StaffSidebar active="dashboard"/>
       <div style={styles.main}>
-        <h1 style={{marginBottom: "8px"}}>Staff Dashboard</h1>
-        <p style={{opacity: 0.7, marginBottom: "20px"}}>Manage your assigned bookings</p>
+        <div style={styles.header}>
+          <div>
+            <h1 style={styles.title}>Staff Dashboard</h1>
+            <p style={styles.subtitle}>Manage and track your assigned detailing tasks</p>
+          </div>
+        </div>
 
         {/* VIEW TOGGLE */}
         <div style={styles.viewToggle}>
@@ -309,247 +126,206 @@ const StaffDashboard = () => {
             style={{
               ...styles.viewBtn,
               background: view === "tasks" ? "var(--accent-yellow)" : "var(--bg-tertiary)",
-              color: view === "tasks" ? "var(--bg-primary)" : "var(--text-primary)"
+              color: view === "tasks" ? "#000" : "var(--text-primary)"
             }}
             onClick={() => setView("tasks")}
           >
+            <ClipboardList size={16} />
             My Tasks
           </button>
           <button 
             style={{
               ...styles.viewBtn,
               background: view === "schedule" ? "var(--accent-yellow)" : "var(--bg-tertiary)",
-              color: view === "schedule" ? "var(--bg-primary)" : "var(--text-primary)"
+              color: view === "schedule" ? "#000" : "var(--text-primary)"
             }}
             onClick={() => setView("schedule")}
           >
+            <Calendar size={16} />
             My Schedule
           </button>
         </div>
 
-        {loading && <p style={styles.loading}>Loading...</p>}
-
-        {/* TASKS VIEW */}
-        {view === "tasks" && !loading && (
+        {loading ? (
+          <div style={styles.loading}>Loading your tasks...</div>
+        ) : (
           <>
-            {bookings.length === 0 && (
-              <div style={styles.emptyState}>
-                <p>No assigned bookings yet.</p>
-                <p style={{fontSize:"14px", opacity: 0.7}}>New tasks will appear here when assigned by admin.</p>
-              </div>
-            )}
+            {/* TASKS VIEW */}
+            {view === "tasks" && (
+              <>
+                {bookings.length === 0 && (
+                  <div style={styles.emptyState}>
+                    <ClipboardList size={48} style={{opacity: 0.2, marginBottom: "16px"}} />
+                    <h3>No assigned bookings yet</h3>
+                    <p style={{fontSize:"14px", opacity: 0.7}}>New tasks will appear here when assigned by admin.</p>
+                  </div>
+                )}
 
-            {activeBookings.length > 0 && (
-              <div style={styles.section}>
-                <h2 style={styles.sectionTitle}>Active Tasks ({activeBookings.length})</h2>
-                <div style={styles.grid}>
-                  {activeBookings.map(b => {
-                    const services = b.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ") || "No services";
-                    const total = b.items?.reduce((sum,i)=>sum + Number(i.priceAtBooking || 0), 0) || 0;
-                    
-                    return(
-                      <div key={b.id} style={styles.card}>
-                        <div style={styles.cardHeader}>
-                          <span style={{...styles.statusBadge, background: getStatusColor(b.status)}}>
-                            {b.status}
-                          </span>
-                          <span style={styles.bookingId}>#{b.id}</span>
+                {activeBookings.length > 0 && (
+                  <div style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                      <Play size={18} color="var(--accent-yellow)" />
+                      Active Tasks ({activeBookings.length})
+                    </h2>
+                    <div style={styles.grid}>
+                      {activeBookings.map(b => (
+                        <div key={b.id} style={styles.card}>
+                          <div style={styles.cardHeader}>
+                            <span style={styles.bookingId}>#{b.id.toString().padStart(4, '0')}</span>
+                            <BookingStatusBadge status={b.status} />
+                          </div>
+
+                          <div style={styles.cardBody}>
+                            <div style={styles.infoGroup}>
+                              <User size={16} color="var(--text-secondary)" />
+                              <span style={styles.customerName}>{b.customer?.fullName || "N/A"}</span>
+                            </div>
+                            
+                            <div style={styles.infoGroup}>
+                              <Clock size={16} color="var(--text-secondary)" />
+                              <span style={styles.value}>{formatDate(b.appointmentStart)}</span>
+                            </div>
+
+                            <div style={styles.infoGroup}>
+                              <Car size={16} color="var(--text-secondary)" />
+                              <span style={styles.value}>{b.vehicleType || "N/A"} • {b.plateNumber || "N/A"}</span>
+                            </div>
+
+                            <div style={styles.infoGroup}>
+                              <Package size={16} color="var(--text-secondary)" />
+                              <span style={styles.services}>
+                                {b.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ")}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={styles.cardFooter}>
+                            <div style={styles.actionRow}>
+                              {b.status === "CONFIRMED" && (
+                                <button
+                                  style={styles.startBtn}
+                                  disabled={updatingId === b.id}
+                                  onClick={() => updateStatus(b.id, "ONGOING")}
+                                >
+                                  <Play size={14} />
+                                  Start Service
+                                </button>
+                              )}
+
+                              {b.status === "ONGOING" && (
+                                <button
+                                  style={styles.completeBtn}
+                                  disabled={updatingId === b.id}
+                                  onClick={() => updateStatus(b.id, "COMPLETED")}
+                                >
+                                  <CheckCircle2 size={14} />
+                                  Complete
+                                </button>
+                              )}
+
+                              <button
+                                style={styles.viewDetailsBtn}
+                                onClick={() => setSelectedBooking(b)}
+                              >
+                                <Info size={14} />
+                                Details
+                              </button>
+                            </div>
+                          </div>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-                        <div style={{marginBottom: "12px"}}>
-                          <p style={styles.label}>Customer</p>
-                          <p style={styles.customerName}>{b.customer?.fullName || "N/A"}</p>
-                        </div>
-
-                        <div style={{marginBottom: "8px"}}>
-                          <p style={styles.label}>Date & Time</p>
-                          <p style={styles.value}>{formatDate(b.appointmentStart)}</p>
-                        </div>
-
-                        <div style={{marginBottom: "8px"}}>
-                          <p style={styles.label}>Vehicle</p>
-                          <p style={styles.value}>{b.vehicleType || "N/A"} - {b.plateNumber || "N/A"}</p>
-                        </div>
-
-                        <div style={{marginBottom: "12px"}}>
-                          <p style={styles.label}>Services</p>
-                          <p style={styles.services}>{services}</p>
-                        </div>
-
-                        <div style={styles.totalRow}>
-                          <span>Total:</span>
-                          <span style={styles.totalAmount}>₱{total.toLocaleString()}</span>
-                        </div>
-
-                        <div style={styles.actionRow}>
-                          {b.status === "SCHEDULED" && (
-                            <button
-                              style={styles.startBtn}
-                              disabled={updatingId === b.id}
-                              onClick={() => updateStatus(b.id, "ONGOING")}
-                            >
-                              {updatingId === b.id ? "Updating..." : "Start Service"}
-                            </button>
-                          )}
-
-                          {b.status === "ONGOING" && (
-                            <button
-                              style={styles.completeBtn}
-                              disabled={updatingId === b.id}
-                              onClick={() => updateStatus(b.id, "COMPLETED")}
-                            >
-                              {updatingId === b.id ? "Updating..." : "Mark Completed"}
-                            </button>
-                          )}
-
-                          {(b.status === "CONFIRMED" || b.status === "SCHEDULED") && (
-                            <button
-                              style={styles.cancelBtn}
-                              disabled={updatingId === b.id}
-                              onClick={() => requestCancel(b.id)}
-                            >
-                              Request Cancel
-                            </button>
-                          )}
-
+                {completedBookings.length > 0 && (
+                  <div style={styles.section}>
+                    <h2 style={styles.sectionTitle}>
+                      <History size={18} color="var(--text-secondary)" />
+                      Recently Finished ({completedBookings.length})
+                    </h2>
+                    <div style={styles.grid}>
+                      {completedBookings.map(b => (
+                        <div key={b.id} style={{...styles.card, opacity: 0.7}}>
+                          <div style={styles.cardHeader}>
+                            <span style={styles.bookingId}>#{b.id.toString().padStart(4, '0')}</span>
+                            <BookingStatusBadge status={b.status} />
+                          </div>
+                          <div style={styles.cardBody}>
+                            <div style={styles.infoGroup}>
+                              <User size={14} color="var(--text-secondary)" />
+                              <span style={styles.customerName}>{b.customer?.fullName}</span>
+                            </div>
+                            <div style={styles.infoGroup}>
+                              <Clock size={14} color="var(--text-secondary)" />
+                              <span style={styles.value}>{formatDate(b.appointmentStart)}</span>
+                            </div>
+                          </div>
                           <button
-                            style={styles.viewDetailsBtn}
+                            style={styles.viewDetailsBtnFull}
                             onClick={() => setSelectedBooking(b)}
                           >
                             View Details
                           </button>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
-            {completedBookings.length > 0 && (
-              <div style={styles.section}>
-                <h2 style={styles.sectionTitle}>Completed / Cancelled ({completedBookings.length})</h2>
-                <div style={styles.grid}>
-                  {completedBookings.map(b => {
-                    const services = b.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ") || "No services";
-                    const total = b.items?.reduce((sum,i)=>sum + Number(i.priceAtBooking || 0), 0) || 0;
-                    
-                    return(
-                      <div key={b.id} style={{...styles.card, opacity: 0.8}}>
-                        <div style={styles.cardHeader}>
-                          <span style={{...styles.statusBadge, background: getStatusColor(b.status)}}>
-                            {b.status}
-                          </span>
-                          <span style={styles.bookingId}>#{b.id}</span>
-                        </div>
-
-                        <div style={{marginBottom: "12px"}}>
-                          <p style={styles.label}>Customer</p>
-                          <p style={styles.customerName}>{b.customer?.fullName || "N/A"}</p>
-                        </div>
-
-                        <div style={{marginBottom: "8px"}}>
-                          <p style={styles.label}>Date & Time</p>
-                          <p style={styles.value}>{formatDate(b.appointmentStart)}</p>
-                        </div>
-
-                        <div style={{marginBottom: "12px"}}>
-                          <p style={styles.label}>Services</p>
-                          <p style={styles.services}>{services}</p>
-                        </div>
-
-                        <div style={styles.totalRow}>
-                          <span>Total:</span>
-                          <span style={styles.totalAmount}>₱{total.toLocaleString()}</span>
-                        </div>
-
-                        <button
-                          style={styles.viewDetailsBtn}
-                          onClick={() => setSelectedBooking(b)}
-                        >
-                          View Full Details
-                        </button>
-
-                        <p style={styles.readOnly}>This booking is {b.status.toLowerCase()}</p>
-                      </div>
-                    );
-                  })}
+            {/* SCHEDULE VIEW */}
+            {view === "schedule" && (
+              <div style={styles.scheduleCard}>
+                <div style={styles.scheduleHeader}>
+                  <h3>Schedule for {new Date(scheduleDate).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+                  <div style={styles.datePicker}>
+                    <Calendar size={16} style={styles.dateIcon} />
+                    <input
+                      type="date"
+                      value={scheduleDate}
+                      onChange={(e) => setScheduleDate(e.target.value)}
+                      style={styles.dateInput}
+                    />
+                  </div>
                 </div>
+
+                {getScheduleBookings().length === 0 ? (
+                  <div style={styles.emptySchedule}>
+                    <Calendar size={32} style={{opacity: 0.2, marginBottom: "12px"}} />
+                    <p>No tasks scheduled for this date.</p>
+                  </div>
+                ) : (
+                  <div style={styles.grid}>
+                    {getScheduleBookings().map(b => (
+                      <div key={b.id} style={styles.card}>
+                        <div style={styles.cardHeader}>
+                          <span style={styles.bookingId}>#{b.id}</span>
+                          <BookingStatusBadge status={b.status} />
+                        </div>
+                        <div style={styles.cardBody}>
+                          <div style={styles.infoGroup}>
+                            <Clock size={16} color="var(--accent-yellow)" />
+                            <span style={{fontWeight: "700"}}>
+                              {new Date(b.appointmentStart).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'})}
+                            </span>
+                          </div>
+                          <div style={styles.infoGroup}>
+                            <User size={16} />
+                            <span>{b.customer?.fullName}</span>
+                          </div>
+                        </div>
+                        <button style={styles.viewDetailsBtnFull} onClick={() => setSelectedBooking(b)}>
+                          View Details
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>
-        )}
-
-        {/* SCHEDULE VIEW */}
-        {view === "schedule" && !loading && (
-          <div>
-            <div style={styles.scheduleCard}>
-              <div style={styles.scheduleHeader}>
-                <h2 style={styles.sectionTitle}>Schedule for {new Date(scheduleDate).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</h2>
-                <input
-                  type="date"
-                  value={scheduleDate}
-                  onChange={(e) => setScheduleDate(e.target.value)}
-                  style={styles.dateInput}
-                />
-              </div>
-
-              {getScheduleBookings().length === 0 ? (
-                <p style={{opacity: 0.5, textAlign: "center", padding: "40px"}}>
-                  No bookings scheduled for this date.
-                </p>
-              ) : (
-                <div style={styles.grid}>
-                  {getScheduleBookings().map(b => {
-                    const services = b.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ") || "No services";
-                    const total = b.items?.reduce((sum,i)=>sum + Number(i.priceAtBooking || 0), 0) || 0;
-                    
-                    return(
-                      <div key={b.id} style={styles.card}>
-                        <div style={styles.cardHeader}>
-                          <span style={{...styles.statusBadge, background: getStatusColor(b.status)}}>
-                            {b.status}
-                          </span>
-                          <span style={styles.bookingId}>#{b.id}</span>
-                        </div>
-
-                        <div style={{marginBottom: "12px"}}>
-                          <p style={styles.label}>Customer</p>
-                          <p style={styles.customerName}>{b.customer?.fullName || "N/A"}</p>
-                        </div>
-
-                        <div style={{marginBottom: "8px"}}>
-                          <p style={styles.label}>Time</p>
-                          <p style={styles.value}>
-                            {b.appointmentStart ? new Date(b.appointmentStart).toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'}) : ""}
-                          </p>
-                        </div>
-
-                        <div style={{marginBottom: "12px"}}>
-                          <p style={styles.label}>Services</p>
-                          <p style={styles.services}>{services}</p>
-                        </div>
-
-                        <div style={styles.totalRow}>
-                          <span>Total:</span>
-                          <span style={styles.totalAmount}>₱{total.toLocaleString()}</span>
-                        </div>
-
-                        <div style={styles.actionRow}>
-                          <button
-                            style={styles.viewDetailsBtn}
-                            onClick={() => setSelectedBooking(b)}
-                          >
-                            View Details
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
         )}
 
         {/* BOOKING DETAILS MODAL */}
@@ -557,93 +333,51 @@ const StaffDashboard = () => {
           <div style={styles.modal} onClick={() => setSelectedBooking(null)}>
             <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
               <div style={styles.modalHeader}>
-                <h2 style={{ color: 'var(--text-primary)' }}>Booking Details #{selectedBooking.id}</h2>
-                <button style={styles.modalClose} onClick={() => setSelectedBooking(null)}>×</button>
+                <h2>Task Details #{selectedBooking.id}</h2>
+                <button style={styles.modalClose} onClick={() => setSelectedBooking(null)}><XCircle size={24} /></button>
               </div>
 
-              <div style={{marginBottom: "20px"}}>
-                <span style={{...styles.statusBadge, background: getStatusColor(selectedBooking.status)}}>
-                  {selectedBooking.status}
-                </span>
-                {" "}
-                <span style={{...styles.statusBadge, background: selectedBooking.paymentStatus === "PAID" ? "var(--accent-green)" : selectedBooking.paymentStatus === "PARTIALLY_PAID" ? "var(--accent-blue)" : "var(--accent-red)"}}>
-                  {selectedBooking.paymentStatus}
-                </span>
+              <div style={styles.modalBadges}>
+                <BookingStatusBadge status={selectedBooking.status} />
+                <PaymentStatusBadge status={selectedBooking.paymentStatus} />
               </div>
 
-              <div style={detailStyles.detailGrid}>
-                <div style={detailStyles.detailItem}>
-                  <p style={styles.label}>Customer</p>
-                  <p style={styles.customerName}>{selectedBooking.customer?.fullName || "N/A"}</p>
+              <div style={styles.detailGrid}>
+                <div style={styles.detailCard}>
+                  <label>CUSTOMER</label>
+                  <p><strong>{selectedBooking.customer?.fullName}</strong></p>
+                  <p>{selectedBooking.contactNumber || "No contact"}</p>
                 </div>
-
-                <div style={detailStyles.detailItem}>
-                  <p style={styles.label}>Contact</p>
-                  <p style={styles.value}>{selectedBooking.contactNumber || "N/A"}</p>
+                <div style={styles.detailCard}>
+                  <label>VEHICLE</label>
+                  <p><strong>{selectedBooking.vehicleType}</strong></p>
+                  <p>{selectedBooking.plateNumber || "No Plate"}</p>
                 </div>
-
-                <div style={detailStyles.detailItem}>
-                  <p style={styles.label}>Email</p>
-                  <p style={styles.value}>{selectedBooking.email || selectedBooking.customer?.email || "N/A"}</p>
+                <div style={styles.detailCard}>
+                  <label>APPOINTMENT</label>
+                  <p><strong>{formatDate(selectedBooking.appointmentStart)}</strong></p>
                 </div>
-
-                <div style={detailStyles.detailItem}>
-                  <p style={styles.label}>Vehicle</p>
-                  <p style={styles.value}>{selectedBooking.vehicleType || "N/A"} - {selectedBooking.plateNumber || "N/A"}</p>
-                </div>
-
-                <div style={detailStyles.detailItem}>
-                  <p style={styles.label}>Appointment</p>
-                  <p style={styles.value}>{formatDate(selectedBooking.appointmentStart)}</p>
-                </div>
-
-                <div style={detailStyles.detailItem}>
-                  <p style={styles.label}>Payment Method</p>
-                  <p style={styles.value}>{selectedBooking.paymentMethod === "GCASH" ? "GCash" : "Cash"}</p>
+                <div style={styles.detailCard}>
+                  <label>PAYMENT</label>
+                  <p><strong>{selectedBooking.paymentMethod}</strong></p>
                 </div>
               </div>
 
-              <div style={{marginTop: "20px"}}>
-                <p style={styles.label}>Services</p>
-                {selectedBooking.items?.map((item, i) => (
-                  <div key={i} style={{display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border-color)"}}>
-                    <span style={{ color: 'var(--text-primary)' }}>{item.service?.name || item.serviceNameAtBooking}</span>
-                    <span style={{ color: 'var(--text-primary)' }}>₱{Number(item.priceAtBooking || 0).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{marginTop: "20px", padding: "16px", background: "var(--bg-primary)", borderRadius: "10px"}}>
-                <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", color: "var(--text-primary)"}}>
-                  <span>Total Amount:</span>
-                  <span style={{fontWeight: "600"}}>₱{Number(selectedBooking.totalAmount || 0).toLocaleString()}</span>
-                </div>
-                <div style={{display: "flex", justifyContent: "space-between", marginBottom: "8px", color: "var(--accent-green)"}}>
-                  <span>Amount Paid:</span>
-                  <span>₱{Number(selectedBooking.amountPaid || 0).toLocaleString()}</span>
-                </div>
-                <div style={{display: "flex", justifyContent: "space-between", color: "var(--accent-red)"}}>
-                  <span>Balance:</span>
-                  <span>₱{(Number(selectedBooking.totalAmount || 0) - Number(selectedBooking.amountPaid || 0)).toLocaleString()}</span>
-                </div>
-              </div>
-
-              {selectedBooking.payments?.length > 0 && (
-                <div style={{marginTop: "20px"}}>
-                  <p style={styles.label}>Payment History</p>
-                  {selectedBooking.payments.map((payment, i) => (
-                    <div key={i} style={{display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border-color)"}}>
-                      <span style={{ color: 'var(--text-primary)' }}>{payment.method === "GCASH" ? "GCash" : "Cash"} - {new Date(payment.createdAt).toLocaleString()}</span>
-                      <span style={{color: "var(--accent-green)"}}>₱{Number(payment.amount).toLocaleString()}</span>
+              <div style={styles.serviceSection}>
+                <label>SERVICES TO PERFORM</label>
+                <div style={styles.modalServices}>
+                  {selectedBooking.items?.map((item, i) => (
+                    <div key={i} style={styles.modalServiceItem}>
+                      <span>{item.service?.name || item.serviceNameAtBooking}</span>
                     </div>
                   ))}
                 </div>
-              )}
+              </div>
 
               {selectedBooking.notes && (
-                <div style={{marginTop: "20px"}}>
-                  <p style={styles.label}>Notes</p>
-                  <p style={styles.value}>{selectedBooking.notes}</p>
+                <div style={styles.notesSection}>
+                  <label>CUSTOMER NOTES</label>
+                  <div style={styles.notesBox}>{selectedBooking.notes}</div>
                 </div>
               )}
             </div>
@@ -654,17 +388,165 @@ const StaffDashboard = () => {
   );
 };
 
-const detailStyles = {
-  detailGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, 1fr)",
-    gap: "20px"
-  },
-  detailItem: {
+const styles = {
+  page: {
+    display: "flex",
     background: "var(--bg-primary)",
-    padding: "12px",
-    borderRadius: "8px"
+    minHeight: "100vh",
+    fontFamily: "Poppins, system-ui"
+  },
+  main: {
+    marginLeft: "260px",
+    padding: "40px",
+    width: "100%",
+    color: "var(--text-primary)"
+  },
+  title: { fontSize: "32px", fontWeight: "800", marginBottom: "8px" },
+  subtitle: { opacity: 0.6, fontSize: "14px", marginBottom: "32px" },
+  viewToggle: {
+    display: "flex",
+    gap: "12px",
+    marginBottom: "32px",
+    padding: "6px",
+    background: "var(--card-bg)",
+    borderRadius: "14px",
+    width: "fit-content",
+    border: "1px solid var(--border-color)"
+  },
+  viewBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "10px 20px",
+    borderRadius: "10px",
+    border: "none",
+    cursor: "pointer",
+    fontWeight: "600",
+    fontSize: "14px",
+    transition: "0.2s"
+  },
+  loading: { padding: "100px", textAlign: "center", opacity: 0.5 },
+  emptyState: {
+    textAlign: "center",
+    padding: "60px 20px",
+    background: "var(--card-bg)",
+    borderRadius: "20px",
+    border: "1px solid var(--border-color)"
+  },
+  section: { marginBottom: "40px" },
+  sectionTitle: { 
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    fontSize: "18px", 
+    fontWeight: "700",
+    marginBottom: "20px", 
+    color: "var(--text-primary)" 
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))",
+    gap: "24px"
+  },
+  card: {
+    background: "var(--card-bg)",
+    borderRadius: "18px",
+    border: "1px solid var(--border-color)",
+    overflow: "hidden"
+  },
+  cardHeader: {
+    padding: "16px 20px",
+    background: "rgba(255,255,255,0.02)",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottom: "1px solid var(--border-color)"
+  },
+  bookingId: { fontSize: "12px", fontWeight: "700", color: "var(--accent-yellow)", letterSpacing: "1px" },
+  cardBody: {
+    padding: "20px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px"
+  },
+  infoGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    fontSize: "14px"
+  },
+  customerName: { fontSize: "16px", fontWeight: "700" },
+  value: { color: "var(--text-primary)" },
+  services: { color: "var(--text-secondary)", fontSize: "13px" },
+  cardFooter: {
+    padding: "16px 20px",
+    borderTop: "1px solid var(--border-color)",
+    background: "rgba(255,255,255,0.01)"
+  },
+  actionRow: { display: "flex", gap: "10px" },
+  startBtn: {
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+    padding: "10px", borderRadius: "8px", border: "none", background: "var(--accent-blue)",
+    color: "white", fontWeight: "700", cursor: "pointer", fontSize: "13px"
+  },
+  completeBtn: {
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+    padding: "10px", borderRadius: "8px", border: "none", background: "var(--accent-green)",
+    color: "white", fontWeight: "700", cursor: "pointer", fontSize: "13px"
+  },
+  viewDetailsBtn: {
+    display: "flex", alignItems: "center", gap: "8px", padding: "10px 16px",
+    borderRadius: "8px", border: "none", background: "var(--bg-tertiary)",
+    color: "var(--text-primary)", fontWeight: "600", cursor: "pointer", fontSize: "13px"
+  },
+  viewDetailsBtnFull: {
+    width: "100%", padding: "12px", borderRadius: "0", border: "none",
+    background: "var(--bg-tertiary)", color: "var(--text-primary)", fontWeight: "600",
+    cursor: "pointer", fontSize: "13px", borderTop: "1px solid var(--border-color)"
+  },
+  scheduleCard: {
+    background: "var(--card-bg)", padding: "24px", borderRadius: "20px",
+    border: "1px solid var(--border-color)"
+  },
+  scheduleHeader: {
+    display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px"
+  },
+  datePicker: { position: "relative", display: "flex", alignItems: "center" },
+  dateIcon: { position: "absolute", left: "12px", pointerEvents: "none", color: "var(--accent-yellow)" },
+  dateInput: {
+    padding: "10px 12px 10px 40px", borderRadius: "10px", border: "1px solid var(--border-color)",
+    background: "var(--bg-primary)", color: "var(--text-primary)", cursor: "pointer", outline: "none"
+  },
+  emptySchedule: { textAlign: "center", padding: "60px", color: "var(--text-secondary)" },
+  modal: {
+    position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+    background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center",
+    justifyContent: "center", zIndex: 1000, backdropFilter: "blur(4px)"
+  },
+  modalContent: {
+    background: "var(--card-bg)", padding: "40px", borderRadius: "24px",
+    width: "100%", maxWidth: "700px", maxHeight: "90vh", overflow: "auto",
+    border: "1px solid var(--border-color)", position: "relative"
+  },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" },
+  modalClose: { background: "none", border: "none", color: "var(--text-secondary)", cursor: "pointer" },
+  modalBadges: { display: "flex", gap: "10px", marginBottom: "32px" },
+  detailGrid: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "20px", marginBottom: "32px" },
+  detailCard: { padding: "16px", background: "var(--bg-primary)", borderRadius: "14px" },
+  serviceSection: { marginBottom: "24px" },
+  modalServices: { display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" },
+  modalServiceItem: { 
+    padding: "12px 16px", background: "var(--bg-primary)", 
+    borderRadius: "10px", borderLeft: "4px solid var(--accent-yellow)" 
+  },
+  notesSection: { marginTop: "32px" },
+  notesBox: { 
+    padding: "16px", background: "rgba(234, 179, 8, 0.05)", 
+    borderRadius: "14px", border: "1px dashed var(--accent-yellow)",
+    color: "var(--text-primary)", fontSize: "14px", lineHeight: "1.6"
   }
 };
+
+const History = ({ size, color, style }) => <ClipboardList size={size} color={color} style={style} />;
 
 export default StaffDashboard;

@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
 import AdminLayout from "../../components/AdminLayout";
 import API from "../../api/axios";
+import { 
+  BarChart3, 
+  CheckCircle2, 
+  Clock, 
+  DollarSign, 
+  Smartphone, 
+  Banknote,
+  TrendingUp
+} from "lucide-react";
 import "../../App.css";
 
 const AdminAnalytics = () => {
@@ -91,28 +100,28 @@ const AdminAnalytics = () => {
 
         <div style={styles.statsGrid}>
           <div style={styles.statCard}>
-            <div style={styles.statIcon}>📊</div>
+            <div style={{...styles.statIcon, color: "var(--accent-blue)"}}><BarChart3 size={32} /></div>
             <div style={styles.statContent}>
               <span style={styles.statValue}>{counts.total}</span>
               <span style={styles.statLabel}>Total Bookings</span>
             </div>
           </div>
           <div style={styles.statCard}>
-            <div style={styles.statIcon}>✅</div>
+            <div style={{...styles.statIcon, color: "var(--accent-green)"}}><CheckCircle2 size={32} /></div>
             <div style={styles.statContent}>
               <span style={styles.statValue}>{counts.completed}</span>
               <span style={styles.statLabel}>Completed</span>
             </div>
           </div>
           <div style={styles.statCard}>
-            <div style={styles.statIcon}>⏳</div>
+            <div style={{...styles.statIcon, color: "var(--accent-yellow)"}}><Clock size={32} /></div>
             <div style={styles.statContent}>
-              <span style={styles.statValue}>{counts.pending + counts.scheduled}</span>
-              <span style={styles.statLabel}>Pending/Scheduled</span>
+              <span style={styles.statValue}>{counts.pending + (counts.confirmed || 0) + (counts.scheduled || 0)}</span>
+              <span style={styles.statLabel}>Pending/Confirmed</span>
             </div>
           </div>
           <div style={styles.statCard}>
-            <div style={styles.statIcon}>💰</div>
+            <div style={{...styles.statIcon, color: "var(--accent-blue)"}}><DollarSign size={32} /></div>
             <div style={styles.statContent}>
               <span style={styles.statValue}>{formatCurrency(finances.totalRevenue)}</span>
               <span style={styles.statLabel}>Total Revenue</span>
@@ -199,14 +208,14 @@ const AdminAnalytics = () => {
             <h3 style={styles.cardTitle}>Payment Methods</h3>
             <div style={styles.paymentGrid}>
               <div style={styles.paymentItem}>
-                <div style={styles.paymentIcon}>📱</div>
+                <div style={{...styles.paymentIcon, color: "var(--accent-blue)"}}><Smartphone size={24} /></div>
                 <div style={styles.paymentInfo}>
                   <span style={styles.paymentValue}>{formatCurrency(finances.gcashRevenue)}</span>
                   <span style={styles.paymentLabel}>GCash</span>
                 </div>
               </div>
               <div style={styles.paymentItem}>
-                <div style={styles.paymentIcon}>💵</div>
+                <div style={{...styles.paymentIcon, color: "var(--accent-green)"}}><Banknote size={24} /></div>
                 <div style={styles.paymentInfo}>
                   <span style={styles.paymentValue}>{formatCurrency(finances.cashRevenue)}</span>
                   <span style={styles.paymentLabel}>Cash</span>
@@ -258,8 +267,8 @@ const AdminAnalytics = () => {
               </div>
               <div style={styles.statusItem}>
                 <span style={{...styles.statusDot, background: "#3b82f6"}}></span>
-                <span>Scheduled</span>
-                <span style={styles.statusCount}>{counts.scheduled}</span>
+                <span>Confirmed</span>
+                <span style={styles.statusCount}>{(counts.confirmed || 0) + (counts.scheduled || 0)}</span>
               </div>
               <div style={styles.statusItem}>
                 <span style={{...styles.statusDot, background: "#8b5cf6"}}></span>

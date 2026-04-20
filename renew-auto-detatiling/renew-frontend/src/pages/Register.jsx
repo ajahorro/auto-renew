@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../context/ThemeContext";
+import API from "../api/axios";
 
 function Register() {
   const navigate = useNavigate();
@@ -48,22 +49,14 @@ function Register() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/register/initiate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, email, password, phone })
+      const res = await API.post("/auth/register/initiate", { 
+        fullName, email, password, phone 
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Registration failed");
-      }
 
       setStep(2);
       startResendTimer();
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -75,23 +68,14 @@ function Register() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/register/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Verification failed");
-      }
+      const res = await API.post("/auth/register/verify-otp", { email, otp });
+      const data = res.data;
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       navigate("/customer-dashboard");
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || "Verification failed");
     } finally {
       setLoading(false);
     }
@@ -103,22 +87,11 @@ function Register() {
     setLoading(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/auth/register/resend-otp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to resend code");
-      }
-
+      await API.post("/auth/register/resend-otp", { email });
       setOtp("");
       startResendTimer();
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || "Failed to resend code");
     } finally {
       setLoading(false);
     }

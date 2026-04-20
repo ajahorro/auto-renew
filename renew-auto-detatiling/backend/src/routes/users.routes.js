@@ -14,14 +14,14 @@ const bcrypt = require("bcryptjs");
    Excludes archived users by default
  =============================== */
 
-router.get("/", authenticate, async (req, res) => {
+router.get("/", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (req, res) => {
   try {
     const { role } = req.query;
 
     const where = {};
 
     if (role) {
-      where.role = role;
+      where.role = String(role).toUpperCase();
     }
 
     const users = await prisma.user.findMany({

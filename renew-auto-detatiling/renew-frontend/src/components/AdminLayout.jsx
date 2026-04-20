@@ -1,10 +1,10 @@
-import AdminSidebar from "./AdminSidebar";
+import AdminSideBar from "./AdminSideBar";
 
 const AdminLayout = ({ children, active }) => {
   return (
     <div style={styles.wrapper}>
 
-      <AdminSidebar active={active} />
+      <AdminSideBar active={active} />
 
       <div style={styles.main}>
         {children}

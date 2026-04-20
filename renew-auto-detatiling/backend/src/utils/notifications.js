@@ -37,13 +37,13 @@ const sendNotification = async ({ userId, title, message, type, actionType, acto
 };
 
 const notifyUser = async (userId, data, tx = null) => {
-  return sendNotification({ userId, ...data });
+  return sendNotification({ userId, ...data, tx });
 };
 
 const notifyMultiple = async (userIds, data, tx = null) => {
   const results = [];
   for (const userId of userIds) {
-    const result = await sendNotification({ userId, ...data }, tx);
+    const result = await sendNotification({ userId, ...data, tx });
     results.push(result);
   }
   return results;

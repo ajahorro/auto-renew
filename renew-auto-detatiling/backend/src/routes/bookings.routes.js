@@ -37,15 +37,15 @@ router.get("/availability", getAvailability);
 /* GET BOOKINGS */
 router.get("/", authenticate, getBookings);
 
-/* UPDATE BOOKING (CUSTOMER) */
-router.patch("/update/:id", authenticate, authorize("CUSTOMER"), updateBooking);
-router.patch("/:id", authenticate, authorize("CUSTOMER"), updateBooking);
-
 /* ADMIN ANALYTICS */
 router.get("/admin-analytics", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAdminAnalytics);
 
 /* ADMIN DAILY SCHEDULE */
 router.get("/schedule", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getDailySchedule);
+
+/* UPDATE BOOKING (CUSTOMER) - must be before /:id catch-all */
+router.patch("/update/:id", authenticate, authorize("CUSTOMER"), updateBooking);
+router.patch("/:id", authenticate, authorize("CUSTOMER"), updateBooking);
 
 /* ADD PAYMENT */
 router.post("/add-payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addPayment);
@@ -87,7 +87,7 @@ router.get("/:bookingId/addon-requests", authenticate, authorize("ADMIN", "SUPER
 router.patch("/addon-requests/:id/approve", authenticate, authorize("ADMIN", "SUPER_ADMIN"), approveAddonRequest);
 router.patch("/addon-requests/:id/reject", authenticate, authorize("ADMIN", "SUPER_ADMIN"), rejectAddonRequest);
 
-/* ================= LAST ================= */
+/* ================= GET BOOKING BY ID - MUST BE LAST ================= */
 
 router.get("/:id", authenticate, getBookingById);
 

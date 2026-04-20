@@ -15,6 +15,23 @@ const formatLocalDate = (value) => {
   return `${year}-${month}-${day}`;
 };
 
+const toTwentyFourHourTime = (value = "") => {
+  const raw = String(value).trim();
+  if (!raw) return "";
+
+  const match = raw.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+  if (!match) return raw;
+
+  let hour = Number(match[1]);
+  const minute = match[2];
+  const meridiem = match[3]?.toUpperCase();
+
+  if (meridiem === "PM" && hour < 12) hour += 12;
+  if (meridiem === "AM" && hour === 12) hour = 0;
+
+  return `${String(hour).padStart(2, "0")}:${minute}`;
+};
+
 const dedupeServices = (list = []) => {
   const seen = new Set();
   return list.filter((service) => {
@@ -245,6 +262,10 @@ const BookAppointment = () => {
       toast.error("Contact number is required");
       return false;
     }
+    if (!paymentMethod) {
+      toast.error("Please choose a payment method");
+      return false;
+    }
     return true;
   };
 
@@ -277,7 +298,8 @@ const BookAppointment = () => {
 
     try {
       let appointmentStart = new Date(date);
-      const cleanTime = time.trim();
+      const normalizedTime = toTwentyFourHourTime(time);
+      const cleanTime = normalizedTime.trim();
       let hour = 0;
       let minute = 0;
       
@@ -293,8 +315,9 @@ const BookAppointment = () => {
 
       const payload = {
         services: selectedServices.map(s => Number(s.id)),
+        appointmentStart: appointmentStart.toISOString(),
         scheduledDate: formatLocalDate(date),
-        scheduledTime: time,
+        scheduledTime: normalizedTime,
         vehicleType: formData.vehicleType, 
         plateNumber: formData.plateNumber, 
         contactNumber: formData.contactNumber, 
@@ -317,8 +340,8 @@ const BookAppointment = () => {
 
       if (paymentMethod === "GCASH" && receiptFile && bookingId) {
         const formDataUpload = new FormData();
-        formDataUpload.append("proof", receiptFile);
-        formDataUpload.append("amount", totalAmount.toString());
+        formDataUpload.append("receipt", receiptFile);
+        formDataUpload.append("bookingId", String(bookingId));
         formDataUpload.append("method", "GCASH");
         await API.post("/payments", formDataUpload, {
           headers: { "Content-Type": "multipart/form-data" }
@@ -469,6 +492,35 @@ const BookAppointment = () => {
           </div>
 
           <div style={styles.formSection}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>Payment Method *</label>
+              <div style={styles.paymentOptionGrid}>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("CASH")}
+                  style={{
+                    ...styles.paymentOptionCard,
+                    ...(paymentMethod === "CASH" ? styles.paymentOptionCardActive : {})
+                  }}
+                >
+                  <span style={styles.paymentOptionTitle}>Cash</span>
+                  <span style={styles.paymentOptionText}>Pay at the shop on your appointment day.</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("GCASH")}
+                  style={{
+                    ...styles.paymentOptionCard,
+                    ...(paymentMethod === "GCASH" ? styles.paymentOptionCardActive : {})
+                  }}
+                >
+                  <span style={styles.paymentOptionTitle}>GCash</span>
+                  <span style={styles.paymentOptionText}>
+                    Upload your receipt after booking for admin verification.
+                  </span>
+                </button>
+              </div>
+            </div>
             <div style={styles.inputGroup}>
               <label style={styles.label}>Vehicle Type *</label>
               <select name="vehicleType" value={formData.vehicleType} onChange={handleInputChange} style={styles.input}>
@@ -761,7 +813,7 @@ const styles = {
   sectionContainer: { marginTop: "30px" },
   sectionTitle: { fontSize: "18px", color: "var(--text-primary)", marginBottom: "15px", borderLeft: "4px solid var(--accent-blue)", paddingLeft: "10px" },
   servicesGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "15px" },
-  serviceCard: { padding: "16px", borderRadius: "12px", cursor: "pointer", border: "2px solid var(--border-color)", transition: "0.2s" },
+  serviceCard: { padding: "16px", borderRadius: "12px", cursor: "pointer", borderWidth: "2px", borderStyle: "solid", borderColor: "var(--border-color)", transition: "0.2s" },
   cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   serviceName: { fontWeight: "600", color: "var(--text-primary)", fontSize: "15px" },
   serviceDesc: { color: "var(--text-secondary)", fontSize: "12px", margin: "8px 0" },
@@ -771,7 +823,7 @@ const styles = {
   input: { background: "var(--bg-primary)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "10px", borderRadius: "8px", width: "100%" },
   textarea: { background: "var(--bg-primary)", border: "1px solid var(--border-color)", color: "var(--text-primary)", padding: "10px", borderRadius: "8px", width: "100%", height: "80px" },
   slotGrid: { display: "flex", flexWrap: "wrap", gap: "8px" },
-  slotBtn: { padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border-color)", color: "var(--text-primary)", cursor: "pointer" },
+  slotBtn: { padding: "8px 12px", borderRadius: "6px", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border-color)", color: "var(--text-primary)", cursor: "pointer" },
   nextButton: { background: "var(--accent-blue)", color: "#020617", width: "100%", padding: "14px", border: "none", borderRadius: "10px", fontWeight: "700", cursor: "pointer", marginTop: "10px" },
   emptyText: { color: "var(--text-secondary)", fontSize: "13px" },
   formSection: { marginTop: "20px", paddingTop: "20px", borderTop: "1px solid var(--border-color)" },
@@ -792,6 +844,28 @@ const styles = {
   reviewDetail: { display: "flex", gap: "15px", fontSize: "14px", color: "var(--text-primary)", marginBottom: "8px" },
   detailLabel: { color: "var(--text-secondary)", minWidth: "100px" },
   paymentMethodDisplay: { padding: "15px", background: "var(--bg-primary)", borderRadius: "8px", fontWeight: "600" },
+  paymentOptionGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "12px", marginBottom: "4px" },
+  paymentOptionCard: {
+    background: "var(--bg-primary)",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--border-color)",
+    borderRadius: "10px",
+    padding: "14px",
+    textAlign: "left",
+    cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    color: "var(--text-primary)"
+  },
+  paymentOptionCardActive: {
+    borderColor: "var(--accent-blue)",
+    boxShadow: "0 0 0 1px var(--accent-blue)",
+    background: "rgba(56, 189, 248, 0.08)"
+  },
+  paymentOptionTitle: { fontSize: "15px", fontWeight: "700" },
+  paymentOptionText: { fontSize: "12px", color: "var(--text-secondary)", lineHeight: "1.5" },
   reviewActions: { display: "flex", gap: "15px", marginTop: "30px" },
   backButton: { flex: 1, padding: "14px", borderRadius: "10px", border: "1px solid var(--border-color)", background: "transparent", color: "var(--text-primary)", fontWeight: "600", cursor: "pointer" },
   proceedButton: { flex: 2, padding: "14px", borderRadius: "10px", border: "none", background: "var(--accent-blue)", color: "#020617", fontWeight: "700", cursor: "pointer" },

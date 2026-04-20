@@ -42,7 +42,7 @@ const AppointmentCard = ({ booking, onCancel }) => {
         </p>
       )}
 
-      {["pending", "scheduled"].includes(booking.status) && onCancel && (
+      {["PENDING", "CONFIRMED"].includes(booking.status) && onCancel && (
 
         <button
           onClick={async () => {

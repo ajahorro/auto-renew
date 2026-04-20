@@ -1,6 +1,6 @@
 const prisma = require("../config/prisma");
-const path = require("path");
-const fs = require("fs");
+
+
 const { sendEmail } = require("../services/email.service");
 
 const LOG_REQUEST = (req, context) => {
@@ -380,7 +380,7 @@ const createManualPayment = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid user token" });
     }
 
-    const { bookingId, amount, note } = req.body;
+    const { bookingId, amount } = req.body;
 
     if (!bookingId || !amount) {
       return res.status(400).json({
@@ -412,8 +412,7 @@ const createManualPayment = async (req, res) => {
         method: "CASH",
         status: "APPROVED",
         verifiedBy: userId,
-        verifiedAt: new Date(),
-        manualNote: note || "Manual payment - verified"
+        verifiedAt: new Date()
       }
     });
 
@@ -458,55 +457,76 @@ const getPayments = async (req, res) => {
     const { bookingId, status, method, page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where = {};
+    const isAdmin = ["ADMIN", "SUPER_ADMIN"].includes(String(userRole).toUpperCase());
 
-    if (bookingId) {
-      where.bookingId = Number(bookingId);
-    }
+    let payments = [];
+    let total = 0;
 
-    if (status) {
-      where.status = status;
-    }
+    try {
+      if (isAdmin) {
+        const where = {};
+        if (bookingId) where.bookingId = Number(bookingId);
+        if (status) where.status = String(status).toUpperCase();
+        if (method) where.method = String(method).toUpperCase();
 
-    if (method) {
-      where.method = method;
-    }
-
-    if (!["ADMIN", "SUPER_ADMIN"].includes(userRole.toUpperCase())) {
-      where.booking = { customerId: userId };
-    }
-
-    const [payments, total] = await Promise.all([
-      prisma.payment.findMany({
-        where,
-        include: {
-          booking: {
-            select: {
-              id: true,
-              customerId: true,
-              totalAmount: true,
-              amountPaid: true,
-              customer: {
-                select: { id: true, fullName: true, email: true }
+        [payments, total] = await Promise.all([
+          prisma.payment.findMany({
+            where,
+            include: {
+              booking: {
+                include: {
+                  customer: { select: { id: true, fullName: true, email: true } }
+                }
               }
-            }
-          }
-        },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: Number(limit)
-      }),
-      prisma.payment.count({ where })
-    ]);
+            },
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: Number(limit)
+          }),
+          prisma.payment.count({ where })
+        ]);
+      } else {
+        const bookings = await prisma.booking.findMany({
+          where: { customerId: userId },
+          select: { id: true }
+        });
+        const bookingIds = bookings.map(b => b.id);
+
+        const where = { bookingId: { in: bookingIds } };
+        if (status) where.status = String(status).toUpperCase();
+        if (method) where.method = String(method).toUpperCase();
+
+        [payments, total] = await Promise.all([
+          prisma.payment.findMany({
+            where,
+            include: {
+              booking: {
+                include: {
+                  customer: { select: { id: true, fullName: true, email: true } }
+                }
+              }
+            },
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: Number(limit)
+          }),
+          prisma.payment.count({ where })
+        ]);
+      }
+    } catch (dbErr) {
+      console.error("Payment query error:", dbErr);
+      payments = [];
+      total = 0;
+    }
 
     res.json({
       success: true,
-      payments,
+      payments: payments || [],
       pagination: {
         total: total || 0,
         page: Number(page),
         limit: Number(limit),
-        pages: Math.ceil(total / Number(limit)) || 0
+        pages: Math.ceil((total || 0) / Number(limit)) || 0
       }
     });
 
@@ -514,8 +534,8 @@ const getPayments = async (req, res) => {
     console.error("ERROR [GET_PAYMENTS]:", error);
     res.status(500).json({
       success: false,
-      message: "Internal Server Error",
-      error: error.message
+      message: "Failed to fetch payments",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
 };
@@ -529,7 +549,7 @@ const getPendingVerifications = async (req, res) => {
 
     const where = { status: "PENDING" };
     if (method) {
-      where.method = method;
+      where.method = String(method).toUpperCase();
     }
 
     const [payments, total] = await Promise.all([
@@ -547,18 +567,24 @@ const getPendingVerifications = async (req, res) => {
         orderBy: { createdAt: "asc" },
         skip,
         take: Number(limit)
+      }).catch(err => {
+        console.error("Payment query error:", err);
+        return [];
       }),
-      prisma.payment.count({ where })
+      prisma.payment.count({ where }).catch(err => {
+        console.error("Payment count error:", err);
+        return 0;
+      })
     ]);
 
     res.json({
       success: true,
-      payments,
+      payments: payments || [],
       pagination: {
         total: total || 0,
         page: Number(page),
         limit: Number(limit),
-        pages: Math.ceil(total / Number(limit)) || 0
+        pages: Math.ceil((total || 0) / Number(limit)) || 0
       }
     });
 
@@ -566,8 +592,8 @@ const getPendingVerifications = async (req, res) => {
     console.error("ERROR [GET_PENDING_VERIFICATIONS]:", error);
     res.status(500).json({
       success: false,
-      message: "Internal Server Error",
-      error: error.message
+      message: "Failed to fetch pending payments",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
 };

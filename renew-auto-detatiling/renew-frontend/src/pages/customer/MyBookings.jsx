@@ -5,6 +5,17 @@ import API from "../../api/axios";
 import { confirmAction } from "../../components/ConfirmModal";
 import CustomerSidebar from "../../components/CustomerSideBar";
 import PaymentModal from "../../components/PaymentModal";
+import BookingStatusBadge from "../../components/BookingStatusBadge";
+import PaymentStatusBadge from "../../components/PaymentStatusBadge";
+import { 
+  CreditCard, 
+  Wallet, 
+  Trash2, 
+  ChevronRight, 
+  Calendar, 
+  Car, 
+  Package 
+} from "lucide-react";
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -43,7 +54,9 @@ const MyBookings = () => {
     if (!confirmed) return;
 
     try {
-      const res = await API.patch(`/bookings/request-cancel/${id}`);
+      const res = await API.patch(`/bookings/request-cancel/${id}`, {
+        reason: "Requested by customer from bookings page"
+      });
       toast.success(res.data.message || "Cancellation request submitted!");
       fetchBookings();
     } catch (err) {
@@ -62,34 +75,8 @@ const MyBookings = () => {
     setShowPaymentModal(true);
   };
 
-  const getStatusStyle = (status) => {
-    switch (status) {
-      case "PENDING": return { background: "#f59e0b", color: "#fff" };
-      case "CONFIRMED": return { background: "#10b981", color: "#fff" };
-      case "SCHEDULED": return { background: "#8b5cf6", color: "#fff" };
-      case "ONGOING": return { background: "#a855f7", color: "#fff" };
-      case "COMPLETED": return { background: "#22c55e", color: "#fff" };
-      case "CANCELLED": return { background: "#ef4444", color: "#fff" };
-      case "PENDING_PAYMENT": return { background: "#f59e0b", color: "#fff" };
-      default: return { background: "#334155", color: "#fff" };
-    }
-  };
-
-  const getStatusLabel = (status) => {
-    switch (status) {
-      case "PENDING": return "Pending";
-      case "CONFIRMED": return "Confirmed";
-      case "SCHEDULED": return "Scheduled";
-      case "ONGOING": return "Ongoing";
-      case "COMPLETED": return "Completed";
-      case "CANCELLED": return "Cancelled";
-      case "PENDING_PAYMENT": return "Pending Payment";
-      default: return status;
-    }
-  };
-
   const canCancel = (status) => {
-    return ["PENDING", "CONFIRMED", "SCHEDULED"].includes(status);
+    return ["PENDING", "CONFIRMED"].includes(status);
   };
 
   const needsPayment = (booking) => {
@@ -97,172 +84,316 @@ const MyBookings = () => {
            Number(booking.totalAmount) > Number(booking.amountPaid || 0);
   };
 
-  const canSwitchToGCash = (booking) => {
-    return booking.status === "COMPLETED" &&
-           booking.paymentMethod === "CASH" &&
-           Number(booking.totalAmount) > Number(booking.amountPaid || 0);
-  };
-
-  const getAmountDue = (booking) => {
-    return Number(booking.totalAmount) - Number(booking.amountPaid || 0);
-  };
-
   return (
     <div style={styles.page}>
       <CustomerSidebar active="bookings" />
-
       <div style={styles.main}>
-        <header style={styles.header}>
-          <h1 style={styles.title}>My Bookings</h1>
-          <p style={styles.subtitle}>Manage your upcoming and past service appointments</p>
-        </header>
+        <h1 style={styles.title}>My Bookings</h1>
 
         {loading ? (
-          <div style={styles.emptyState}>Loading your bookings...</div>
+          <div style={styles.loading}>Loading your bookings...</div>
         ) : bookings.length === 0 ? (
-          <div style={styles.emptyState}>No bookings found. 
-            <button onClick={() => navigate("/customer/book")} style={styles.bookNowBtn}>
-              Book Now
+          <div style={styles.emptyState}>
+            <div style={styles.emptyIcon}><Calendar size={48} /></div>
+            <h3>No bookings yet</h3>
+            <p>You haven't made any detailing appointments yet.</p>
+            <button style={styles.bookBtn} onClick={() => navigate("/customer/book")}>
+              Book Your First Service
             </button>
           </div>
         ) : (
-          <div style={styles.grid}>
-            {bookings.map((booking) => {
-              const services = booking.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ") || "General Service";
-              const total = Number(booking.totalAmount) || 0;
-              const paid = Number(booking.amountPaid || 0);
-              const amountDue = getAmountDue(booking);
-
-              return (
-                <div key={booking.id} style={styles.card}>
-                  <div style={styles.rowTop}>
+          <div style={styles.bookingList}>
+            {bookings.map((booking) => (
+              <div key={booking.id} style={styles.bookingCard}>
+                <div style={styles.cardHeader}>
+                  <div style={styles.headerLeft}>
                     <span style={styles.bookingId}>#{booking.id.toString().padStart(4, '0')}</span>
-                    <span style={{ ...styles.statusBadge, ...getStatusStyle(booking.status) }}>
-                      {getStatusLabel(booking.status)}
+                    <span style={styles.bookingDate}>
+                      {new Date(booking.appointmentStart).toLocaleDateString(undefined, { 
+                        month: 'short', day: 'numeric', year: 'numeric' 
+                      })}
                     </span>
                   </div>
+                  <div style={styles.statusGroup}>
+                    <BookingStatusBadge status={booking.status} />
+                    <PaymentStatusBadge status={booking.paymentStatus} />
+                  </div>
+                </div>
 
-                  {booking.appointmentStart && (
-                    <div style={styles.dateTime}>
-                      <span style={styles.iconText}>📅 {new Date(booking.appointmentStart).toLocaleDateString()}</span>
-                      <span style={styles.iconText}>⏰ {new Date(booking.appointmentStart).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</span>
-                    </div>
-                  )}
-
-                  <p style={styles.servicesList}>{services}</p>
-
-                  <div style={styles.divider} />
-
-                  <div style={styles.paymentSection}>
-                    <div style={styles.paymentRow}>
-                      <span style={styles.label}>Total</span>
-                      <span style={styles.totalPrice}>₱{total.toLocaleString()}</span>
-                    </div>
-                    <div style={styles.paymentRow}>
-                      <span style={styles.label}>Paid</span>
-                      <span style={styles.paidAmount}>₱{paid.toLocaleString()}</span>
-                    </div>
-                    <div style={{ ...styles.paymentRow, borderTop: "1px dashed var(--border-color)", paddingTop: "8px", marginTop: "4px" }}>
-                      <span style={{ ...styles.label, fontWeight: "600" }}>Balance</span>
-                      <span style={{ ...styles.balanceAmount, color: amountDue > 0 ? "var(--accent-red)" : "var(--accent-green)" }}>
-                        ₱{amountDue.toLocaleString()}
-                      </span>
+                <div style={styles.cardBody}>
+                  <div style={styles.infoRow}>
+                    <Package size={16} color="var(--accent-blue)" />
+                    <div style={styles.servicesList}>
+                      {booking.items?.map(item => item.service?.name || item.serviceNameAtBooking).join(", ")}
                     </div>
                   </div>
+                  
+                  <div style={styles.infoRow}>
+                    <Car size={16} color="var(--accent-blue)" />
+                    <span>{booking.vehicleType} • {booking.plateNumber || "No Plate"}</span>
+                  </div>
 
-                  <div style={styles.actionRow}>
-                    {!booking.isLocked && ["PENDING", "CONFIRMED"].includes(booking.status) && (
-                      <button
-                        onClick={() => navigate(`/customer/book?edit=${booking.id}`)}
-                        style={styles.editButton}
-                      >
-                        Edit Booking
-                      </button>
-                    )}
+                  <div style={styles.priceRow}>
+                    <div style={styles.priceInfo}>
+                      <span style={styles.priceLabel}>Total Amount</span>
+                      <span style={styles.priceValue}>₱{Number(booking.totalAmount).toLocaleString()}</span>
+                    </div>
+                    <div style={styles.priceInfo}>
+                      <span style={styles.priceLabel}>Paid</span>
+                      <span style={{...styles.priceValue, color: "var(--accent-green)"}}>₱{Number(booking.amountPaid || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
 
-                    {needsPayment(booking) && (
-                      <button
+                <div style={styles.cardActions}>
+                  <div style={styles.actionLeft}>
+                    {booking.paymentMethod === "CASH" && needsPayment(booking) && (
+                      <button 
+                        style={styles.switchBtn}
                         onClick={() => openPaymentModal(booking)}
-                        style={styles.payButton}
                       >
-                        Pay ₱{amountDue.toLocaleString()}
-                      </button>
-                    )}
-
-                    {canSwitchToGCash(booking) && (
-                      <button
-                        onClick={() => openPaymentModal(booking, true)}
-                        style={{...styles.payButton, background: "var(--accent-green)"}}
-                      >
+                        <Wallet size={14} />
                         Switch to GCash
                       </button>
                     )}
-
-                    {canCancel(booking.status) && (
-                      <button
-                        onClick={() => cancelBooking(booking.id)}
-                        style={styles.cancelButton}
+                    {booking.paymentMethod === "GCASH" && needsPayment(booking) && (
+                      <button 
+                        style={styles.payBtn}
+                        onClick={() => openPaymentModal(booking)}
                       >
-                        Cancel
+                        <CreditCard size={14} />
+                        Pay via GCash
                       </button>
                     )}
                   </div>
+                  <div style={styles.actionRight}>
+                    {canCancel(booking.status) && (
+                      <button 
+                        style={styles.cancelBtn}
+                        onClick={() => cancelBooking(booking.id)}
+                      >
+                        <Trash2 size={14} />
+                        Cancel
+                      </button>
+                    )}
+                    <button 
+                      style={styles.viewBtn}
+                      onClick={() => navigate(`/customer/dashboard`)} // In this system, dashboard shows active booking
+                    >
+                      View Details
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         )}
-      </div>
 
-      {showPaymentModal && selectedBooking && (
-        <PaymentModal
-          booking={selectedBooking}
-          isPostService={isPostServicePayment}
-          onClose={() => {
-            setShowPaymentModal(false);
-            setSelectedBooking(null);
-            setIsPostServicePayment(false);
-          }}
-          onSuccess={() => {
-            handlePaymentSuccess();
-            setIsPostServicePayment(false);
-          }}
-        />
-      )}
+        {showPaymentModal && (
+          <PaymentModal
+            booking={selectedBooking}
+            onClose={() => setShowPaymentModal(false)}
+            onSuccess={handlePaymentSuccess}
+            isPostService={isPostServicePayment}
+          />
+        )}
+      </div>
     </div>
   );
 };
 
-/* ===============================
-   STYLES
-============================== */
 const styles = {
-  page: { display: "flex", background: "var(--bg-primary)", minHeight: "100vh", fontFamily: "'Poppins', sans-serif" },
-  main: { marginLeft: "250px", padding: "40px", width: "100%", color: "var(--text-primary)" },
-  header: { marginBottom: "30px" },
-  title: { fontSize: "28px", fontWeight: "700", marginBottom: "5px" },
-  subtitle: { color: "var(--text-secondary)", fontSize: "14px" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: "25px" },
-  card: { background: "var(--card-bg)", padding: "24px", borderRadius: "16px", border: "1px solid var(--border-color)", display: "flex", flexDirection: "column" },
-  rowTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" },
-  bookingId: { color: "var(--accent-blue)", fontWeight: "600", fontSize: "14px" },
-  statusBadge: { padding: "4px 12px", borderRadius: "20px", fontSize: "11px", fontWeight: "700", textTransform: "uppercase" },
-  dateTime: { display: "flex", gap: "15px", marginBottom: "12px", color: "var(--text-primary)", fontSize: "14px" },
-  iconText: { display: "flex", alignItems: "center", gap: "6px" },
-  servicesList: { fontSize: "14px", color: "var(--text-secondary)", lineHeight: "1.5", marginBottom: "20px", flexGrow: 1 },
-  divider: { height: "1px", background: "var(--border-color)", margin: "15px 0" },
-  paymentSection: { marginBottom: "20px" },
-  paymentRow: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" },
-  label: { fontSize: "12px", color: "var(--text-secondary)" },
-  totalPrice: { fontSize: "16px", fontWeight: "700", color: "var(--text-primary)" },
-  paidAmount: { fontSize: "14px", color: "var(--accent-green)" },
-  balanceAmount: { fontSize: "16px", fontWeight: "700" },
-  actionRow: { display: "flex", gap: "10px", marginTop: "8px" },
-  editButton: { flex: 1, padding: "12px", borderRadius: "10px", border: "1px solid var(--accent-blue)", background: "transparent", color: "var(--accent-blue)", fontWeight: "600", cursor: "pointer" },
-  payButton: { flex: 2, padding: "12px", borderRadius: "10px", border: "none", background: "var(--accent-blue)", color: "#fff", fontWeight: "600", cursor: "pointer" },
-  cancelButton: { flex: 1, padding: "12px", borderRadius: "10px", border: "1px solid var(--border-color)", background: "transparent", color: "var(--text-secondary)", fontWeight: "600", cursor: "pointer" },
-  emptyState: { textAlign: "center", padding: "60px", color: "var(--text-secondary)", background: "var(--card-bg)", borderRadius: "16px" },
-  bookNowBtn: { display: "block", margin: "16px auto 0", padding: "12px 32px", background: "var(--accent-blue)", color: "#fff", border: "none", borderRadius: "10px", fontWeight: "600", cursor: "pointer" }
+  page: {
+    display: "flex",
+    background: "var(--bg-primary)",
+    minHeight: "100vh",
+    fontFamily: "Poppins, system-ui"
+  },
+  main: {
+    marginLeft: "260px",
+    padding: "40px",
+    width: "100%",
+    color: "var(--text-primary)"
+  },
+  title: {
+    marginBottom: "30px",
+    fontSize: "28px",
+    fontWeight: "800"
+  },
+  loading: {
+    textAlign: "center",
+    padding: "100px",
+    color: "var(--text-secondary)"
+  },
+  emptyState: {
+    textAlign: "center",
+    padding: "100px 20px",
+    background: "var(--card-bg)",
+    borderRadius: "20px",
+    border: "1px solid var(--border-color)"
+  },
+  emptyIcon: {
+    marginBottom: "20px",
+    color: "var(--text-secondary)",
+    opacity: 0.5
+  },
+  bookBtn: {
+    marginTop: "24px",
+    padding: "12px 24px",
+    borderRadius: "10px",
+    border: "none",
+    background: "var(--accent-blue)",
+    color: "white",
+    fontWeight: "600",
+    cursor: "pointer"
+  },
+  bookingList: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
+    gap: "24px"
+  },
+  bookingCard: {
+    background: "var(--card-bg)",
+    borderRadius: "18px",
+    border: "1px solid var(--border-color)",
+    overflow: "hidden",
+    transition: "transform 0.2s, box-shadow 0.2s"
+  },
+  cardHeader: {
+    padding: "20px",
+    borderBottom: "1px solid var(--border-color)",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    background: "rgba(255,255,255,0.02)"
+  },
+  headerLeft: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px"
+  },
+  bookingId: {
+    fontSize: "12px",
+    fontWeight: "700",
+    color: "var(--accent-blue)",
+    letterSpacing: "1px"
+  },
+  bookingDate: {
+    fontSize: "15px",
+    fontWeight: "600"
+  },
+  statusGroup: {
+    display: "flex",
+    gap: "8px"
+  },
+  cardBody: {
+    padding: "20px"
+  },
+  infoRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "12px",
+    fontSize: "14px",
+    color: "var(--text-secondary)"
+  },
+  servicesList: {
+    color: "var(--text-primary)",
+    fontWeight: "500",
+    flex: 1
+  },
+  priceRow: {
+    display: "flex",
+    gap: "24px",
+    marginTop: "20px",
+    padding: "16px",
+    background: "var(--bg-tertiary)",
+    borderRadius: "12px"
+  },
+  priceInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
+  },
+  priceLabel: {
+    fontSize: "11px",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    color: "var(--text-secondary)"
+  },
+  priceValue: {
+    fontSize: "16px",
+    fontWeight: "700"
+  },
+  cardActions: {
+    padding: "16px 20px",
+    borderTop: "1px solid var(--border-color)",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    background: "rgba(255,255,255,0.01)"
+  },
+  actionLeft: {
+    display: "flex",
+    gap: "10px"
+  },
+  actionRight: {
+    display: "flex",
+    gap: "10px"
+  },
+  switchBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    border: "1px solid var(--accent-yellow)",
+    background: "transparent",
+    color: "var(--accent-yellow)",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer"
+  },
+  payBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    border: "none",
+    background: "var(--accent-blue)",
+    color: "white",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer"
+  },
+  cancelBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    border: "none",
+    background: "rgba(239, 68, 68, 0.1)",
+    color: "var(--accent-red)",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer"
+  },
+  viewBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "8px 14px",
+    borderRadius: "8px",
+    border: "none",
+    background: "var(--bg-tertiary)",
+    color: "var(--text-primary)",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer"
+  }
 };
 
 export default MyBookings;

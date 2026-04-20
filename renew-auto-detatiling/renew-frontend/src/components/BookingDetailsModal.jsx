@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import BillingPanel from "./BillingPanel";
 import StaffAssignPanel from "./StaffAssignPanel";
-import API from "../api/axios"; // Consistent API utility
+import API from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 
 const BookingDetailsModal = ({ booking, close, refresh }) => {
@@ -13,7 +13,7 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
   const reloadBooking = async () => {
     try {
       const res = await API.get(`/bookings/${booking.id}`);
-      setBookingData(res.data);
+      setBookingData(res.data.booking || res.data);
       if (refresh) refresh();
     } catch (err) {
       console.error("Booking reload error", err);
@@ -43,7 +43,6 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
   const hasAssignedStaff = bookingData.assignedStaffId || bookingData.assignedStaff?.id;
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
 
-  /* ACTIONS */
   const addService = async () => {
     if (!newService) return alert("Select a service first");
     try {
@@ -66,7 +65,6 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
     }
   };
 
-
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
@@ -85,8 +83,8 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
 
           {bookingData.notes && (
             <div style={styles.notesBox}>
-              <h4 style={{ marginBottom: '8px' }}>Notes</h4>
-              <p style={{ fontSize: '14px', opacity: 0.8 }}>{bookingData.notes}</p>
+              <h4 style={{ marginBottom: "8px" }}>Notes</h4>
+              <p style={{ fontSize: "14px", opacity: 0.8 }}>{bookingData.notes}</p>
             </div>
           )}
 
@@ -95,19 +93,23 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
               <h3>Services</h3>
               {bookingData.items?.map((item) => (
                 <div key={item.id} style={styles.itemRow}>
-                  <span>{item.service?.name}</span>
-                  <strong>₱{item.price}</strong>
+                  <span>{item.service?.name || item.serviceNameAtBooking}</span>
+                  <strong>PHP {Number(item.priceAtBooking || item.price || 0).toLocaleString()}</strong>
                 </div>
               ))}
-              
+
               <div style={styles.addServiceBox}>
-                <select 
-                  value={newService} 
+                <select
+                  value={newService}
                   onChange={(e) => setNewService(e.target.value)}
                   style={styles.select}
                 >
                   <option value="">+ Add Service</option>
-                  {services.map(s => <option key={s.id} value={s.id}>{s.name} - ₱{s.price}</option>)}
+                  {services.map((service) => (
+                    <option key={service.id} value={service.id}>
+                      {service.name} - PHP {Number(service.price || 0).toLocaleString()}
+                    </option>
+                  ))}
                 </select>
                 <button onClick={addService} style={styles.btnSmall}>Add</button>
               </div>
@@ -122,9 +124,12 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
 
         <div style={styles.footer}>
           <div style={styles.actionGroup}>
-              {isAdmin && bookingData.status === "pending" && (
-                <button style={styles.btnPrimary} onClick={() => hasAssignedStaff ? updateStatus("scheduled", "Scheduled!") : alert("Assign staff first!")}>
-                Approve & Schedule
+            {isAdmin && bookingData.status === "PENDING" && (
+              <button
+                style={styles.btnPrimary}
+                onClick={() => hasAssignedStaff ? updateStatus("CONFIRMED", "Booking confirmed!") : alert("Assign staff first!")}
+              >
+                Confirm Booking
               </button>
             )}
           </div>
@@ -135,9 +140,15 @@ const BookingDetailsModal = ({ booking, close, refresh }) => {
   );
 };
 
-const getStatusColor = (s) => {
-  const colors = { pending: "#facc15", scheduled: "#3b82f6", ongoing: "#a855f7", completed: "#22c55e", cancelled: "#ef4444" };
-  return colors[s] || "#64748b";
+const getStatusColor = (status) => {
+  const colors = {
+    PENDING: "#facc15",
+    CONFIRMED: "#3b82f6",
+    ONGOING: "#a855f7",
+    COMPLETED: "#22c55e",
+    CANCELLED: "#ef4444"
+  };
+  return colors[status] || "#64748b";
 };
 
 const styles = {
@@ -148,6 +159,8 @@ const styles = {
   section: { marginBottom: "20px", fontSize: "15px" },
   notesBox: { background: "#1e293b", padding: "15px", borderRadius: "10px", marginBottom: "20px" },
   split: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px" },
+  left: {},
+  right: {},
   itemRow: { display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.05)", fontSize: "14px" },
   addServiceBox: { marginTop: "15px", display: "flex", gap: "10px" },
   select: { flex: 1, padding: "8px", borderRadius: "6px", background: "#1e293b", color: "#fff", border: "1px solid #334155" },
@@ -155,7 +168,6 @@ const styles = {
   footer: { display: "flex", justifyContent: "space-between", marginTop: "20px", paddingTop: "20px", borderTop: "1px solid #1e293b" },
   actionGroup: { display: "flex", gap: "10px" },
   btnPrimary: { background: "#3b82f6", color: "#fff", padding: "10px 20px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600" },
-  btnSuccess: { background: "#22c55e", color: "#000", padding: "10px 20px", border: "none", borderRadius: "8px", cursor: "pointer", fontWeight: "600" },
   btnClose: { background: "transparent", color: "#94a3b8", padding: "10px 20px", border: "1px solid #334155", borderRadius: "8px", cursor: "pointer" },
   badge: { padding: "4px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "700", color: "#000" }
 };

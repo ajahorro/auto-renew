@@ -18,7 +18,7 @@ const AdminDashboard = () => {
   const [bookings, setBookings] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
   const [statusCounts, setStatusCounts] = useState({
-    PENDING: 0, SCHEDULED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0
+    PENDING: 0, CONFIRMED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0
   });
 
   useEffect(() => {
@@ -37,7 +37,7 @@ const AdminDashboard = () => {
           if (counts) {
             setStatusCounts({
               PENDING: (counts.pending || 0) + (counts.pendingPayment || 0),
-              SCHEDULED: counts.scheduled || 0,
+              CONFIRMED: (counts.confirmed || 0) + (counts.scheduled || 0),
               ONGOING: counts.ongoing || 0,
               COMPLETED: counts.completed || 0,
               CANCELLED: counts.cancelled || 0
@@ -68,7 +68,7 @@ const AdminDashboard = () => {
 
         setStatusCounts({
           PENDING: statusCounts.PENDING,
-          SCHEDULED: statusCounts.SCHEDULED,
+          CONFIRMED: statusCounts.CONFIRMED + statusCounts.SCHEDULED,
           ONGOING: statusCounts.ONGOING,
           COMPLETED: statusCounts.COMPLETED,
           CANCELLED: statusCounts.CANCELLED
@@ -85,7 +85,6 @@ const AdminDashboard = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case "PENDING": return "#facc15";
-      case "SCHEDULED": 
       case "CONFIRMED": return "#3b82f6";
       case "ONGOING": return "#a855f7";
       case "COMPLETED": return "#22c55e";

@@ -2,31 +2,52 @@ import { useNavigate } from "react-router-dom";
 import { useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { confirmAction } from "./ConfirmModal";
+import { 
+  LayoutDashboard, 
+  CalendarPlus, 
+  History, 
+  Bell, 
+  Settings, 
+  LogOut 
+} from "lucide-react";
 
-// Move NavItem outside the component to avoid recreating it on each render
-const NavItem = ({ label, route, name, active, navigate }) => {
+const NavItem = ({ label, route, name, active, navigate, icon: Icon }) => {
   const isActive = active === name;
   return (
     <div
       onClick={() => route && navigate(route)}
       style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
         padding: "12px 16px",
         borderRadius: "10px",
         marginBottom: "6px",
         cursor: "pointer",
         transition: "0.2s",
         background: isActive ? "var(--bg-tertiary)" : "transparent",
-        color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+        color: isActive ? "var(--accent-blue)" : "var(--text-secondary)",
         fontWeight: isActive ? "600" : "400"
       }}
     >
-      {label}
+      {Icon && <Icon size={20} />}
+      <span style={{ fontSize: "14px" }}>{label}</span>
+      {isActive && (
+        <div style={{
+          position: "absolute",
+          left: 0,
+          top: "20%",
+          bottom: "20%",
+          width: "4px",
+          background: "var(--accent-blue)",
+          borderRadius: "0 4px 4px 0"
+        }} />
+      )}
     </div>
   );
 };
 
 const CustomerSidebar = ({ active }) => {
-
   const navigate = useNavigate();
   const { logout: contextLogout } = useContext(AuthContext);
 
@@ -40,10 +61,8 @@ const CustomerSidebar = ({ active }) => {
     });
     
     if (!confirmed) return;
-
     contextLogout();
     navigate("/login");
-
   };
 
   return (
@@ -63,50 +82,43 @@ const CustomerSidebar = ({ active }) => {
     }}>
       <div style={{
         fontSize: "22px",
-        fontWeight: "700",
-        letterSpacing: "1px",
+        fontWeight: "800",
         color: "var(--text-primary)",
-        marginBottom: "30px"
+        marginBottom: "40px",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px"
       }}>
+        <div style={{ width: "8px", height: "22px", background: "var(--accent-blue)", borderRadius: "4px" }} />
         RENEW
       </div>
 
-      <div style={{ flex: 1 }}>
-        <NavItem label="Dashboard" route="/customer" name="dashboard" active={active} navigate={navigate} />
-        <NavItem label="Book Appointment" route="/customer/book" name="book" active={active} navigate={navigate} />
-        <NavItem label="My Bookings" route="/customer/bookings" name="bookings" active={active} navigate={navigate} />
-        <NavItem label="Notifications" route="/customer/notifications" name="notifications" active={active} navigate={navigate} />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <NavItem icon={LayoutDashboard} label="Dashboard" route="/customer" name="dashboard" active={active} navigate={navigate} />
+        <NavItem icon={CalendarPlus} label="Book Appointment" route="/customer/book" name="book" active={active} navigate={navigate} />
+        <NavItem icon={History} label="My Bookings" route="/customer/bookings" name="bookings" active={active} navigate={navigate} />
+        <NavItem icon={Bell} label="Notifications" route="/customer/notifications" name="notifications" active={active} navigate={navigate} />
       </div>
 
-      <div style={{ marginTop: "auto" }}>
-        <div
-          onClick={() => navigate("/customer/settings")}
-          style={{
-            padding: "12px 16px",
-            borderRadius: "10px",
-            marginBottom: "8px",
-            cursor: "pointer",
-            background: active === "settings" ? "var(--bg-tertiary)" : "transparent",
-            color: active === "settings" ? "var(--text-primary)" : "var(--text-secondary)",
-            fontWeight: active === "settings" ? "600" : "400"
-          }}
-        >
-          Settings
-        </div>
-
+      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>
+        <NavItem icon={Settings} label="Settings" route="/customer/settings" name="settings" active={active} navigate={navigate} />
         <div
           onClick={logout}
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
             padding: "12px 16px",
             borderRadius: "10px",
             cursor: "pointer",
-            background: "var(--accent-red)",
-            textAlign: "center",
-            color: "white",
-            fontWeight: "600"
+            background: "rgba(239, 68, 68, 0.1)",
+            color: "var(--accent-red)",
+            fontWeight: "600",
+            transition: "0.2s"
           }}
         >
-          Log Out
+          <LogOut size={20} />
+          <span style={{ fontSize: "14px" }}>Log Out</span>
         </div>
       </div>
     </div>

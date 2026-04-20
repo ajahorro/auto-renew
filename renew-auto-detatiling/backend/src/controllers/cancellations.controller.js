@@ -83,7 +83,6 @@ const REQUEST_CANCELLATION = async (req, res) => {
     
     const { bookingId, reason } = req.body;
     const userId = req.user?.id;
-    const userRole = req.user?.role;
 
     if (!userId) {
       return res.status(401).json({ success: false, message: "Invalid user token" });
@@ -237,7 +236,7 @@ const APPROVE_CANCELLATION = async (req, res) => {
       });
     }
 
-    const { totalPaid, incurredCost, refundAmount } = await calculateRefund(cancellationRequest.bookingId);
+    const { refundAmount } = await calculateRefund(cancellationRequest.bookingId);
     const actor = await prisma.user.findUnique({ where: { id: userId } });
 
     await prisma.$transaction(async (tx) => {

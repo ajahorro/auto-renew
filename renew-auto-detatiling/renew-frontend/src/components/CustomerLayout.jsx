@@ -1,5 +1,5 @@
 import CustomerSidebar from "./CustomerSideBar";
-import AdminSideBar from "./AdminSidebar";
+import AdminSideBar from "./AdminSideBar";
 import { useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 

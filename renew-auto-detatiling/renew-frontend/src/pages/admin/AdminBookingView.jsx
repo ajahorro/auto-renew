@@ -1,12 +1,31 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import API from "../../api/axios";
-import AdminSidebar from "../../components/AdminSidebar";
+import AdminSideBar from "../../components/AdminSideBar";
 import ConfirmModal from "../../components/ConfirmModal";
+import BookingStatusBadge from "../../components/BookingStatusBadge";
+import PaymentStatusBadge from "../../components/PaymentStatusBadge";
 import toast from "react-hot-toast";
+import { 
+  ArrowLeft, 
+  User, 
+  Car, 
+  Calendar, 
+  MapPin, 
+  CreditCard, 
+  FileText, 
+  Clock, 
+  ShieldCheck, 
+  Play, 
+  CheckCircle2, 
+  XCircle,
+  PlusCircle,
+  Receipt
+} from "lucide-react";
 
 const AdminBookingView = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
 
   const [booking, setBooking] = useState(null);
   const [staff, setStaff] = useState([]);
@@ -55,204 +74,292 @@ const AdminBookingView = () => {
   const closeConfirm = () => setModal(prev => ({ ...prev, open: false }));
 
   const updateStatus = (status) => {
-    console.log(`Attempting to ${status} booking ${id}`);
     openConfirm("Update Status", `Change booking to ${status}?`, async () => {
       try {
         if (status === "CANCELLED") {
-          console.log(`Calling: /bookings/cancel/${id}`);
           const res = await API.patch(`/bookings/cancel/${id}`);
-          console.log("Cancel response:", res.data);
           toast.success(res.data?.message || "Booking cancelled");
         } else {
-          console.log(`Calling: /bookings/${id}/status with status=${status}`);
           const res = await API.patch(`/bookings/${id}/status`, { status });
-          console.log("Status update response:", res.data);
           toast.success(res.data?.message || `Moved to ${status}`);
         }
         loadData();
       } catch (err) {
-        console.error("Status update error:", err);
-        console.log("Error response:", err.response?.data);
-        const errMsg = err.response?.data?.message || "Failed to update status";
-        toast.error(errMsg);
+        toast.error(err.response?.data?.message || "Failed to update status");
       }
     });
   };
 
   const assignStaff = (staffId) => {
     if (!staffId) return;
-    console.log(`Attempting to assign staff ${staffId} to booking ${id}`);
     openConfirm("Assign Staff", "Assign this staff member to the booking?", async () => {
       try {
-        console.log(`Calling: /bookings/assign/${id} with staffId=${staffId}`);
         const res = await API.patch(`/bookings/assign/${id}`, { assignedStaffId: staffId });
-        console.log("Assign response:", res.data);
         toast.success(res.data?.message || "Staff assigned successfully");
         loadData();
       } catch (err) {
-        console.error("Assign staff error:", err);
-        console.log("Error response:", err.response?.data);
-        const errMsg = err.response?.data?.message || "Failed to assign staff";
-        toast.error(errMsg);
+        toast.error(err.response?.data?.message || "Failed to assign staff");
       }
     });
   };
 
-
-  const addPayment = async () => {
-    if (!paymentInput || isNaN(paymentInput)) return toast.error("Enter a valid amount");
+  const recordPayment = async () => {
+    if (!paymentInput || isNaN(paymentInput)) {
+      return toast.error("Please enter a valid amount");
+    }
     try {
-      await API.post(`/bookings/add-payment/${id}`, { amount: Number(paymentInput) });
-      toast.success("Payment recorded");
+      const res = await API.post(`/payments/record`, {
+        bookingId: parseInt(id),
+        amount: parseFloat(paymentInput),
+        method: "CASH",
+        reference: "ADMIN_RECORDED"
+      });
+      toast.success("Payment recorded!");
       setPaymentInput("");
       loadData();
     } catch (err) {
-      console.error("Add payment error:", err);
-      toast.error("Failed to record payment");
+      toast.error(err.response?.data?.message || "Failed to record payment");
     }
   };
 
-  if (loading) return <div style={styles.loadingArea}>Loading...</div>;
-  if (!booking) return <div style={styles.loadingArea}>Booking not found.</div>;
+  if (loading) return (
+    <div style={styles.page}>
+      <AdminSidebar active="bookings" />
+      <div style={styles.main}>Loading...</div>
+    </div>
+  );
 
-  const isLocked = ["COMPLETED", "CANCELLED"].includes(booking.status);
-  const canAssignStaff = !isLocked && ["PENDING", "SCHEDULED", "ONGOING"].includes(booking.status);
-  const canSchedule = !isLocked && booking.paymentStatus !== "PENDING" && booking.assignedStaffId && booking.status === "PENDING";
-  const canStart = !isLocked && booking.status === "SCHEDULED";
-  const canComplete = !isLocked && booking.status === "ONGOING";
-  const canCancel = !isLocked && ["PENDING", "SCHEDULED"].includes(booking.status);
+  if (!booking) return (
+    <div style={styles.page}>
+      <AdminSideBar active="bookings" />
+      <div style={styles.main}>Booking not found.</div>
+    </div>
+  );
 
-  const bookingItems = booking.items || [];
-  const totalDuration = bookingItems.reduce((sum, item) => sum + (item.durationAtBooking || 0), 0);
+  const total = Number(booking.totalAmount || 0);
+  const paid = Number(booking.amountPaid || 0);
+  const balance = total - paid;
 
   return (
     <div style={styles.page}>
-      <AdminSidebar active="bookings" />
-
+      <AdminSideBar active="bookings" />
       <div style={styles.main}>
-        <header style={styles.header}>
-          <h2>Booking #{booking.id.toString().padStart(4, '0')}</h2>
-          <div style={styles.badgeRow}>
-            <span style={styles.statusBadge}>{booking.status}</span>
-            <span style={styles.payBadge(booking.paymentStatus)}>{booking.paymentStatus}</span>
+        <button style={styles.backBtn} onClick={() => navigate(-1)}>
+          <ArrowLeft size={16} />
+          Back to Bookings
+        </button>
+
+        <div style={styles.header}>
+          <div style={styles.headerInfo}>
+            <h1 style={styles.title}>Booking #{booking.id.toString().padStart(4, '0')}</h1>
+            <div style={styles.statusRow}>
+              <BookingStatusBadge status={booking.status} />
+              <PaymentStatusBadge status={booking.paymentStatus} />
+            </div>
           </div>
-        </header>
-
-        <div style={styles.grid}>
-          <div style={styles.column}>
-            <section style={styles.card}>
-              <h3 style={styles.cardTitle}>Customer Details</h3>
-              <div style={styles.infoRow}><strong>Name:</strong> {booking.customer?.fullName || "N/A"}</div>
-              <div style={styles.infoRow}><strong>Email:</strong> {booking.customer?.email || "N/A"}</div>
-              <div style={styles.infoRow}><strong>Contact Number:</strong> {booking.contactNumber || booking.customer?.phone || "N/A"}</div>
-            </section>
-
-            <section style={styles.card}>
-              <h3 style={styles.cardTitle}>Vehicle & Notes</h3>
-              <div style={styles.infoRow}><strong>Type:</strong> {booking.vehicleType || "N/A"}</div>
-              <div style={styles.infoRow}><strong>Plate:</strong> {booking.plateNumber || "N/A"}</div>
-              <div style={styles.infoRow}><strong>Brand:</strong> {booking.vehicleBrand || "N/A"}</div>
-              <div style={styles.infoRow}><strong>Model:</strong> {booking.vehicleModel || "N/A"}</div>
-              <div style={styles.noteBox}>{booking.notes || "No special instructions provided."}</div>
-            </section>
-
-            <section style={styles.card}>
-              <h3 style={styles.cardTitle}>Appointment Schedule</h3>
-              <div style={styles.infoRow}>
-                <strong>Date:</strong> {booking.appointmentStart ? new Date(booking.appointmentStart).toLocaleDateString("en-PH", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : "N/A"}
-              </div>
-              <div style={styles.infoRow}>
-                <strong>Time:</strong> {booking.appointmentStart ? new Date(booking.appointmentStart).toLocaleTimeString("en-PH", { hour: 'numeric', minute: '2-digit' }) : "N/A"} - {booking.appointmentEnd ? new Date(booking.appointmentEnd).toLocaleTimeString("en-PH", { hour: 'numeric', minute: '2-digit' }) : "N/A"}
-              </div>
-              <div style={styles.infoRow}>
-                <strong>Duration:</strong> ~{totalDuration} minutes
-              </div>
-              <div style={styles.infoRow}>
-                <strong>Assigned Staff:</strong> {booking.assignedStaff?.fullName || "Not assigned"}
-              </div>
-            </section>
-          </div>
-
-          <div style={styles.column}>
-            <section style={styles.card}>
-              <h3 style={styles.cardTitle}>Selected Services</h3>
-              {bookingItems.length === 0 ? (
-                <div style={styles.emptyText}>No services listed</div>
-              ) : (
-                <div style={styles.servicesList}>
-                  {bookingItems.map((item, index) => (
-                    <div key={item.id || index} style={styles.serviceItem}>
-                      <div style={styles.serviceName}>{item.serviceNameAtBooking || item.service?.name || "Service"}</div>
-                      <div style={styles.serviceDetails}>
-                        <span>₱{Number(item.priceAtBooking || 0).toLocaleString()}</span>
-                        <span style={styles.duration}>{item.durationAtBooking || 0} min</span>
-                      </div>
-                    </div>
-                  ))}
-                  <div style={styles.serviceTotal}>
-                    <span>Total</span>
-                    <span style={styles.totalAmount}>₱{Number(booking.totalAmount || 0).toLocaleString()}</span>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <section style={styles.card}>
-              <h3 style={styles.cardTitle}>Billing Overview</h3>
-              <div style={styles.priceRow}><span>Total:</span> <strong>₱{Number(booking.totalAmount || 0).toLocaleString()}</strong></div>
-              <div style={styles.priceRow}><span>Paid:</span> <span style={{color: "var(--accent-green)"}}>₱{Number(booking.amountPaid || 0).toLocaleString()}</span></div>
-              <div style={styles.priceRow}><span>Balance:</span> <span style={{color: "var(--accent-red)"}}>₱{Number((booking.totalAmount || 0) - (booking.amountPaid || 0)).toLocaleString()}</span></div>
-              
-              {!isLocked && (
-                <div style={styles.paymentInputRow}>
-                  <input 
-                    type="number" 
-                    placeholder="₱ Amount" 
-                    value={paymentInput} 
-                    onChange={e => setPaymentInput(e.target.value)}
-                    style={styles.input}
-                  />
-                  <button onClick={addPayment} style={styles.blueBtn}>Add</button>
-                </div>
-              )}
-            </section>
-
-            <section style={styles.card}>
-              <h3 style={styles.cardTitle}>Staff Assignment</h3>
-              <select 
-                value={booking.assignedStaffId || ""} 
-                onChange={(e) => assignStaff(e.target.value)}
-                disabled={!canAssignStaff}
-                style={{...styles.input, opacity: canAssignStaff ? 1 : 0.6}}
-              >
-                <option value="">Choose Staff Member</option>
-                {staff.map(s => <option key={s.id} value={s.id}>{s.fullName}</option>)}
-              </select>
-              {!canAssignStaff && booking.status !== "ongoing" && (
-                <div style={styles.helperText}>
-                  Staff can be assigned to PENDING, SCHEDULED, or ONGOING bookings only.
-                </div>
-              )}
-            </section>
+          
+          <div style={styles.headerActions}>
+            {booking.status === "PENDING" && (
+              <button style={{...styles.actionBtn, background: "var(--accent-blue)"}} onClick={() => updateStatus("CONFIRMED")}>
+                <ShieldCheck size={18} />
+                Confirm Booking
+              </button>
+            )}
+            {booking.status === "CONFIRMED" && (
+              <button style={{...styles.actionBtn, background: "var(--accent-orange)"}} onClick={() => updateStatus("ONGOING")}>
+                <Play size={18} />
+                Start Service
+              </button>
+            )}
+            {booking.status === "ONGOING" && (
+              <button style={{...styles.actionBtn, background: "var(--accent-green)"}} onClick={() => updateStatus("COMPLETED")}>
+                <CheckCircle2 size={18} />
+                Complete Service
+              </button>
+            )}
+            {booking.status === "COMPLETED" && balance > 0 && (
+              <button style={{...styles.actionBtn, background: "var(--accent-blue)"}} onClick={() => {
+                const el = document.getElementById("payment-section");
+                el?.scrollIntoView({ behavior: "smooth" });
+              }}>
+                <Receipt size={18} />
+                Record Final Payment
+              </button>
+            )}
+            {booking.status !== "CANCELLED" && booking.status !== "COMPLETED" && (
+              <button style={{...styles.actionBtn, background: "rgba(239, 68, 68, 0.1)", color: "var(--accent-red)"}} onClick={() => updateStatus("CANCELLED")}>
+                <XCircle size={18} />
+                Cancel
+              </button>
+            )}
           </div>
         </div>
 
-        <footer style={styles.card}>
-          <h3 style={styles.cardTitle}>Operations Control</h3>
-          <div style={styles.actionRow}>
-            <button disabled={!canSchedule} onClick={() => updateStatus("SCHEDULED")} style={{...styles.greenBtn, opacity: canSchedule ? 1 : 0.4}}>Schedule</button>
-            <button disabled={!canStart} onClick={() => updateStatus("ONGOING")} style={{...styles.blueBtn, opacity: canStart ? 1 : 0.4}}>Start Wash</button>
-            <button disabled={!canComplete} onClick={() => updateStatus("COMPLETED")} style={{...styles.greenBtn, opacity: canComplete ? 1 : 0.4}}>Mark Complete</button>
-            <button disabled={!canCancel} onClick={() => updateStatus("CANCELLED")} style={{...styles.redBtn, opacity: canCancel ? 1 : 0.4}}>Cancel</button>
+        <div style={styles.contentGrid}>
+          <div style={styles.leftCol}>
+            {/* SERVICES CARD */}
+            <div style={styles.card}>
+              <h3 style={styles.cardTitle}>
+                <FileText size={18} color="var(--accent-blue)" />
+                Service Details
+              </h3>
+              <div style={styles.serviceList}>
+                {booking.items?.map((item, i) => (
+                  <div key={i} style={styles.serviceItem}>
+                    <div style={styles.serviceInfo}>
+                      <span style={styles.serviceName}>{item.service?.name || item.serviceNameAtBooking}</span>
+                      <span style={styles.serviceDesc}>{item.service?.description || "Package selected"}</span>
+                    </div>
+                    <span style={styles.servicePrice}>₱{Number(item.priceAtBooking || 0).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={styles.totalRow}>
+                <span>Total Amount</span>
+                <span>₱{total.toLocaleString()}</span>
+              </div>
+            </div>
+
+            {/* ASSIGNMENT CARD */}
+            <div style={styles.card}>
+              <h3 style={styles.cardTitle}>
+                <User size={18} color="var(--accent-blue)" />
+                Staff Assignment
+              </h3>
+              <div style={styles.assignmentBox}>
+                {booking.assignedStaff ? (
+                  <div style={styles.assignedStaff}>
+                    <div style={styles.avatar}>{booking.assignedStaff.fullName?.[0]}</div>
+                    <div style={styles.staffInfo}>
+                      <span style={styles.staffName}>{booking.assignedStaff.fullName}</span>
+                      <span style={styles.staffRole}>Assigned Detailer</span>
+                    </div>
+                    <button style={styles.changeBtn} onClick={() => {
+                      const sel = document.getElementById("staff-select");
+                      sel.focus();
+                    }}>Change</button>
+                  </div>
+                ) : (
+                  <div style={styles.unassigned}>
+                    <Clock size={24} color="var(--text-secondary)" />
+                    <span>No staff assigned yet</span>
+                  </div>
+                )}
+                
+                <div style={styles.assignAction}>
+                  <select 
+                    id="staff-select"
+                    style={styles.select}
+                    onChange={(e) => assignStaff(e.target.value)}
+                    value=""
+                  >
+                    <option value="" disabled>Select staff to assign...</option>
+                    {staff.map(s => (
+                      <option key={s.id} value={s.id}>{s.fullName}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
-        </footer>
+
+          <div style={styles.rightCol}>
+            {/* CUSTOMER CARD */}
+            <div style={styles.card}>
+              <h3 style={styles.cardTitle}>
+                <User size={18} color="var(--accent-blue)" />
+                Customer & Vehicle
+              </h3>
+              <div style={styles.infoGrid}>
+                <div style={styles.infoItem}>
+                  <label>Customer Name</label>
+                  <span>{booking.customer?.fullName}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <label>Contact Number</label>
+                  <span>{booking.contactNumber || booking.customer?.phone}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <label>Vehicle Type</label>
+                  <span>{booking.vehicleType}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <label>Plate Number</label>
+                  <span>{booking.plateNumber || "N/A"}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <label>Appointment Time</label>
+                  <span>{new Date(booking.appointmentStart).toLocaleString()}</span>
+                </div>
+                <div style={styles.infoItem}>
+                  <label>Payment Method</label>
+                  <span>{booking.paymentMethod}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* PAYMENT CARD */}
+            <div id="payment-section" style={styles.card}>
+              <h3 style={styles.cardTitle}>
+                <CreditCard size={18} color="var(--accent-blue)" />
+                Payment Record
+              </h3>
+              <div style={styles.paymentSummary}>
+                <div style={styles.payRow}>
+                  <label>Amount Paid</label>
+                  <span style={{color: "var(--accent-green)"}}>₱{paid.toLocaleString()}</span>
+                </div>
+                <div style={styles.payRow}>
+                  <label>Remaining Balance</label>
+                  <span style={{color: balance > 0 ? "var(--accent-red)" : "var(--accent-green)"}}>
+                    ₱{balance.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+              {balance > 0 && (
+                <div style={styles.recordAction}>
+                  <div style={styles.inputGroup}>
+                    <span style={styles.inputPrefix}>₱</span>
+                    <input 
+                      style={styles.input}
+                      placeholder="Enter amount"
+                      value={paymentInput}
+                      onChange={(e) => setPaymentInput(e.target.value)}
+                    />
+                  </div>
+                  <button style={styles.recordBtn} onClick={recordPayment}>
+                    <PlusCircle size={16} />
+                    Record Cash Payment
+                  </button>
+                </div>
+              )}
+
+              {booking.payments?.length > 0 && (
+                <div style={styles.paymentHistory}>
+                  <label style={styles.histLabel}>Transaction History</label>
+                  {booking.payments.map((p, i) => (
+                    <div key={i} style={styles.histItem}>
+                      <div style={styles.histLeft}>
+                        <span style={styles.histMethod}>{p.method}</span>
+                        <span style={styles.histDate}>{new Date(p.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <span style={styles.histAmount}>+₱{Number(p.amount).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         <ConfirmModal 
-          isOpen={modal.open} 
-          title={modal.title} 
-          message={modal.message} 
-          onConfirm={modal.onConfirm} 
-          onCancel={closeConfirm} 
+          isOpen={modal.open}
+          title={modal.title}
+          message={modal.message}
+          onConfirm={modal.onConfirm}
+          onCancel={closeConfirm}
+          type={modal.title.includes("Cancel") ? "danger" : "primary"}
         />
       </div>
     </div>
@@ -260,39 +367,306 @@ const AdminBookingView = () => {
 };
 
 const styles = {
-  page: { display: "flex", background: "var(--bg-primary)", minHeight: "100vh", color: "var(--text-primary)" },
-  main: { marginLeft: "280px", padding: "40px", width: "calc(100% - 280px)", display: "flex", flexDirection: "column", gap: "25px" },
-  loadingArea: { height: "100vh", background: "var(--bg-primary)", color: "var(--accent-blue)", display: "flex", alignItems: "center", justifyContent: "center" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  badgeRow: { display: "flex", gap: "10px" },
-  statusBadge: { padding: "6px 14px", borderRadius: "20px", background: "var(--bg-tertiary)", fontSize: "12px", fontWeight: "600" },
-  payBadge: (status) => ({
-    padding: "6px 14px", borderRadius: "20px", fontSize: "12px", fontWeight: "600",
-    background: status === "PAID" ? "rgba(34, 197, 94, 0.1)" : "rgba(239, 68, 68, 0.1)",
-    color: status === "PAID" ? "var(--accent-green)" : "var(--accent-red)"
-  }),
-  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "25px" },
-  column: { display: "flex", flexDirection: "column", gap: "25px" },
-  card: { background: "var(--card-bg)", padding: "24px", borderRadius: "16px", border: "1px solid var(--border-color)" },
-  cardTitle: { fontSize: "16px", color: "var(--text-secondary)", marginBottom: "15px", textTransform: "uppercase", letterSpacing: "1px" },
-  infoRow: { display: "flex", justifyContent: "space-between", marginBottom: "8px", color: "var(--text-primary)" },
-  noteBox: { background: "var(--bg-primary)", padding: "12px", borderRadius: "8px", marginTop: "10px", fontSize: "14px", fontStyle: "italic", color: "var(--text-secondary)" },
-  priceRow: { display: "flex", justifyContent: "space-between", marginBottom: "8px" },
-  paymentInputRow: { display: "flex", gap: "10px", marginTop: "15px" },
-  input: { flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)" },
-  actionRow: { display: "flex", gap: "15px", flexWrap: "wrap" },
-  blueBtn: { padding: "10px 20px", background: "var(--accent-blue)", border: "none", borderRadius: "8px", color: "#fff", fontWeight: "600", cursor: "pointer" },
-  greenBtn: { padding: "10px 20px", background: "var(--accent-green)", border: "none", borderRadius: "8px", color: "#fff", fontWeight: "600", cursor: "pointer" },
-  redBtn: { padding: "10px 20px", background: "var(--accent-red)", border: "none", borderRadius: "8px", color: "#fff", fontWeight: "600", cursor: "pointer" },
-  servicesList: { display: "flex", flexDirection: "column", gap: "10px" },
-  serviceItem: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px", background: "var(--bg-primary)", borderRadius: "8px" },
-  serviceName: { fontWeight: "500" },
-  serviceDetails: { display: "flex", gap: "15px", color: "var(--text-secondary)", fontSize: "13px" },
-  duration: { color: "var(--accent-blue)" },
-  serviceTotal: { display: "flex", justifyContent: "space-between", paddingTop: "10px", borderTop: "1px solid var(--border-color)", marginTop: "5px", fontWeight: "600" },
-  totalAmount: { color: "var(--accent-blue)", fontSize: "16px" },
-  emptyText: { color: "var(--text-secondary)", textAlign: "center", padding: "20px" },
-  helperText: { fontSize: "12px", color: "var(--text-secondary)", marginTop: "8px" }
+  page: {
+    display: "flex",
+    background: "var(--bg-primary)",
+    minHeight: "100vh",
+    fontFamily: "Poppins, system-ui"
+  },
+  main: {
+    marginLeft: "280px",
+    padding: "40px",
+    width: "100%",
+    color: "var(--text-primary)"
+  },
+  backBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    background: "transparent",
+    border: "none",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    marginBottom: "24px",
+    fontSize: "14px",
+    fontWeight: "600"
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "32px"
+  },
+  headerInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px"
+  },
+  title: {
+    fontSize: "32px",
+    fontWeight: "800",
+    margin: 0
+  },
+  statusRow: {
+    display: "flex",
+    gap: "10px"
+  },
+  headerActions: {
+    display: "flex",
+    gap: "12px"
+  },
+  actionBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "12px 20px",
+    borderRadius: "12px",
+    border: "none",
+    color: "white",
+    fontWeight: "700",
+    cursor: "pointer",
+    fontSize: "14px",
+    transition: "0.2s"
+  },
+  contentGrid: {
+    display: "grid",
+    gridTemplateColumns: "1.5fr 1fr",
+    gap: "24px"
+  },
+  card: {
+    background: "var(--card-bg)",
+    borderRadius: "20px",
+    padding: "24px",
+    border: "1px solid var(--border-color)",
+    marginBottom: "24px"
+  },
+  cardTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    fontSize: "18px",
+    fontWeight: "700",
+    marginBottom: "24px",
+    color: "var(--text-primary)"
+  },
+  serviceList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px"
+  },
+  serviceItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "16px",
+    background: "var(--bg-tertiary)",
+    borderRadius: "12px"
+  },
+  serviceInfo: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
+  },
+  serviceName: {
+    fontWeight: "700",
+    fontSize: "15px"
+  },
+  serviceDesc: {
+    fontSize: "12px",
+    color: "var(--text-secondary)"
+  },
+  servicePrice: {
+    fontWeight: "800",
+    color: "var(--accent-blue)"
+  },
+  totalRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginTop: "20px",
+    padding: "20px 16px",
+    borderTop: "2px dashed var(--border-color)",
+    fontSize: "18px",
+    fontWeight: "800"
+  },
+  assignmentBox: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px"
+  },
+  assignedStaff: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    padding: "16px",
+    background: "rgba(56, 189, 248, 0.05)",
+    borderRadius: "14px",
+    border: "1px solid rgba(56, 189, 248, 0.2)"
+  },
+  avatar: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "12px",
+    background: "var(--accent-blue)",
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "800",
+    fontSize: "18px"
+  },
+  staffInfo: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1
+  },
+  staffName: {
+    fontWeight: "700",
+    fontSize: "15px"
+  },
+  staffRole: {
+    fontSize: "12px",
+    color: "var(--text-secondary)"
+  },
+  changeBtn: {
+    padding: "6px 12px",
+    borderRadius: "8px",
+    border: "1px solid var(--border-color)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    fontSize: "12px",
+    fontWeight: "600",
+    cursor: "pointer"
+  },
+  unassigned: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "8px",
+    padding: "30px",
+    background: "var(--bg-tertiary)",
+    borderRadius: "14px",
+    color: "var(--text-secondary)"
+  },
+  assignAction: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px"
+  },
+  select: {
+    width: "100%",
+    padding: "12px",
+    borderRadius: "10px",
+    background: "var(--card-bg)",
+    color: "var(--text-primary)",
+    border: "1px solid var(--border-color)",
+    outline: "none"
+  },
+  infoGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "20px"
+  },
+  infoItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px"
+  },
+  infoLabel: {
+    fontSize: "11px",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
+    color: "var(--text-secondary)"
+  },
+  paymentSummary: {
+    padding: "20px",
+    background: "var(--bg-tertiary)",
+    borderRadius: "14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    marginBottom: "24px"
+  },
+  payRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontWeight: "700"
+  },
+  recordAction: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px"
+  },
+  inputGroup: {
+    position: "relative",
+    display: "flex",
+    alignItems: "center"
+  },
+  inputPrefix: {
+    position: "absolute",
+    left: "14px",
+    fontWeight: "700",
+    color: "var(--text-secondary)"
+  },
+  input: {
+    width: "100%",
+    padding: "12px 12px 12px 30px",
+    borderRadius: "10px",
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-primary)",
+    color: "var(--text-primary)",
+    fontWeight: "700"
+  },
+  recordBtn: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    padding: "14px",
+    borderRadius: "12px",
+    background: "var(--accent-blue)",
+    color: "white",
+    fontWeight: "700",
+    border: "none",
+    cursor: "pointer"
+  },
+  paymentHistory: {
+    marginTop: "24px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px"
+  },
+  histLabel: {
+    fontSize: "12px",
+    fontWeight: "700",
+    color: "var(--text-secondary)",
+    textTransform: "uppercase",
+    letterSpacing: "0.5px"
+  },
+  histItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    padding: "12px",
+    borderRadius: "10px",
+    background: "rgba(34, 197, 94, 0.05)"
+  },
+  histLeft: {
+    display: "flex",
+    flexDirection: "column"
+  },
+  histMethod: {
+    fontSize: "13px",
+    fontWeight: "600"
+  },
+  histDate: {
+    fontSize: "11px",
+    color: "var(--text-secondary)"
+  },
+  histAmount: {
+    fontWeight: "700",
+    color: "var(--accent-green)"
+  }
 };
 
 export default AdminBookingView;

@@ -3,6 +3,20 @@ import CustomerSideBar from "../../components/CustomerSideBar";
 import toast from "react-hot-toast";
 import API from "../../api/axios";
 import { useTheme } from "../../context/ThemeContext";
+import { 
+  User, 
+  Lock, 
+  Palette, 
+  ShieldCheck, 
+  Mail, 
+  Phone, 
+  Save, 
+  Eye, 
+  EyeOff,
+  CheckCircle2,
+  AlertTriangle,
+  X
+} from "lucide-react";
 
 const CustomerSettings = () => {
   const { theme, setThemeMode } = useTheme();
@@ -14,12 +28,13 @@ const CustomerSettings = () => {
     fullName: storedUser.fullName || "",
     email: storedUser.email || "",
     phone: storedUser.phone || "",
-    notifyEmail: storedUser.notifyEmail ?? false,
-    notifyWeb: storedUser.notifyWeb ?? true
+    notifyEmail: storedUser.notifyEmail ?? false
   });
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [showCurrentPass, setShowCurrentPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -27,42 +42,10 @@ const CustomerSettings = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState("");
   const [pendingEmail, setPendingEmail] = useState("");
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  const [notifications, setNotifications] = useState([]);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   useEffect(() => {
     loadUser();
-    if (activeTab === "notifications") {
-      loadNotifications();
-    }
-  }, [activeTab]);
-
-  const loadNotifications = async () => {
-    setLoadingNotifications(true);
-    try {
-      const res = await API.get("/notifications");
-      setNotifications(res.data.notifications || []);
-    } catch (err) {
-      console.log("Notifications fetch error", err);
-    } finally {
-      setLoadingNotifications(false);
-    }
-  };
-
-  const markRead = async (id) => {
-    try {
-      await API.patch(`/notifications/${id}/read`);
-      setNotifications(prev =>
-        prev.map(n =>
-          n.id === id ? { ...n, isRead: true } : n
-        )
-      );
-    } catch (err) {
-      console.log(err);
-    }
-  };
+  }, []);
 
   const saveNotificationPrefs = async (field, value) => {
     try {
@@ -82,15 +65,9 @@ const CustomerSettings = () => {
           fullName: res.data.user.fullName || "",
           email: res.data.user.email || "",
           phone: res.data.user.phone || "",
-          notifyEmail: res.data.user.notifyEmail ?? false,
-          notifyWeb: res.data.user.notifyWeb ?? true
+          notifyEmail: res.data.user.notifyEmail ?? false
         });
-        const updatedUser = {
-          ...res.data.user,
-          notifyEmail: res.data.user.notifyEmail ?? false,
-          notifyWeb: res.data.user.notifyWeb ?? true
-        };
-        localStorage.setItem("user", JSON.stringify(updatedUser));
+        localStorage.setItem("user", JSON.stringify(res.data.user));
       }
     } catch (err) {
       console.log(err);
@@ -134,23 +111,17 @@ const CustomerSettings = () => {
     }
   };
 
-  const saveProfile = async () => {
-    if (emailChanged) {
-      toast.error("Please verify your new email before saving");
-      return;
-    }
+  const updateProfile = async () => {
     setSaving(true);
     try {
-      const res = await API.patch("/users/me", {
+      await API.patch("/users/me", {
         fullName: profile.fullName,
         phone: profile.phone
       });
-      if (res.data.user) {
-        localStorage.setItem("user", JSON.stringify(res.data.user));
-        toast.success("Profile updated");
-      }
+      toast.success("Profile updated successfully");
+      loadUser();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Update failed");
+      toast.error(err.response?.data?.message || "Failed to update profile");
     } finally {
       setSaving(false);
     }
@@ -158,782 +129,297 @@ const CustomerSettings = () => {
 
   const changePassword = async () => {
     if (!currentPassword || !newPassword) {
-      toast.error("Fill both password fields");
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters");
+      toast.error("Both passwords are required");
       return;
     }
     setSaving(true);
     try {
-      await API.patch("/users/me/password", { currentPassword, newPassword });
-      toast.success("Password updated");
+      await API.patch("/users/me", {
+        currentPassword,
+        newPassword
+      });
+      toast.success("Password changed successfully");
       setCurrentPassword("");
       setNewPassword("");
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed");
+      toast.error(err.response?.data?.message || "Failed to change password");
     } finally {
       setSaving(false);
     }
   };
 
-  const requestDeleteAccount = async () => {
-    try {
-      await API.post("/users/me/request-delete");
-      toast.success("Account deletion requested. You can cancel by logging in within 15 days.");
-      setShowDeleteModal(false);
-      loadUser();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to request account deletion");
-    }
-  };
-
-  const getThemeLabel = () => {
-    if (theme === "system") return "System Default";
-    if (theme === "light") return "Light Mode";
-    return "Dark Mode";
-  };
-
-  const tabs = [
-    { id: "profile", label: "Profile" },
-    { id: "notifications", label: "Notifications" },
-    { id: "theme", label: "Theme" },
-    { id: "terms", label: "Terms & Conditions" },
-    { id: "danger", label: "Delete Account" }
-  ];
-
   return (
-    <div style={pageStyles.page}>
+    <div style={styles.page}>
       <CustomerSideBar active="settings" />
-      <div style={pageStyles.main}>
-        <h1 style={pageStyles.title}>Account Settings</h1>
+      <div style={styles.main}>
+        <h1 style={styles.title}>Settings</h1>
 
-        <div style={styles.tabContainer}>
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              style={{
-                ...styles.tab,
-                ...(activeTab === tab.id ? styles.activeTab : {})
-              }}
-              onClick={() => setActiveTab(tab.id)}
+        <div style={styles.container}>
+          {/* TABS */}
+          <div style={styles.tabs}>
+            <button 
+              style={{...styles.tab, ...(activeTab === "profile" ? styles.tabActive : {})}}
+              onClick={() => setActiveTab("profile")}
             >
-              {tab.label}
+              <User size={18} />
+              Profile
             </button>
-          ))}
-        </div>
+            <button 
+              style={{...styles.tab, ...(activeTab === "security" ? styles.tabActive : {})}}
+              onClick={() => setActiveTab("security")}
+            >
+              <Lock size={18} />
+              Security
+            </button>
+            <button 
+              style={{...styles.tab, ...(activeTab === "theme" ? styles.tabActive : {})}}
+              onClick={() => setActiveTab("theme")}
+            >
+              <Palette size={18} />
+              Theme
+            </button>
+            <button 
+              style={{...styles.tab, ...(activeTab === "terms" ? styles.tabActive : {})}}
+              onClick={() => setActiveTab("terms")}
+            >
+              <ShieldCheck size={18} />
+              Terms
+            </button>
+          </div>
 
-        {loading ? (
-          <p style={styles.loading}>Loading...</p>
-        ) : (
-          <>
+          <div style={styles.content}>
+            {/* PROFILE TAB */}
             {activeTab === "profile" && (
-              <div style={styles.contentCard}>
-                <h2 style={styles.sectionHeader}>Edit Profile</h2>
-                <div style={styles.formGrid}>
-                  <div style={styles.formGroup}>
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>Public Profile</h3>
+                <div style={styles.grid}>
+                  <div style={styles.field}>
                     <label style={styles.label}>Full Name</label>
-                    <input
-                      placeholder="Full Name"
-                      value={profile.fullName}
-                      onChange={(e) => setProfile(p => ({ ...p, fullName: e.target.value }))}
-                      style={styles.input}
-                    />
+                    <div style={styles.inputBox}>
+                      <User size={16} style={styles.inputIcon} />
+                      <input 
+                        style={styles.input}
+                        value={profile.fullName}
+                        onChange={(e) => setProfile({...profile, fullName: e.target.value})}
+                      />
+                    </div>
                   </div>
-                  <div style={styles.formGroup}>
+                  <div style={styles.field}>
                     <label style={styles.label}>Phone Number</label>
-                    <input
-                      placeholder="Phone Number"
-                      value={profile.phone}
-                      onChange={(e) => setProfile(p => ({ ...p, phone: e.target.value }))}
-                      style={styles.input}
-                    />
+                    <div style={styles.inputBox}>
+                      <Phone size={16} style={styles.inputIcon} />
+                      <input 
+                        style={styles.input}
+                        value={profile.phone}
+                        onChange={(e) => setProfile({...profile, phone: e.target.value})}
+                      />
+                    </div>
                   </div>
                 </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Email</label>
-                  <input
-                    placeholder="Email"
-                    value={profile.email}
-                    onChange={(e) => {
-                      setProfile(p => ({ ...p, email: e.target.value }));
-                      setEmailChanged(true);
-                    }}
-                    style={styles.input}
-                  />
+
+                <div style={{marginTop: "24px"}}>
+                  <label style={styles.label}>Email Address</label>
+                  <div style={styles.inputBox}>
+                    <Mail size={16} style={styles.inputIcon} />
+                    <input 
+                      style={styles.input}
+                      value={profile.email}
+                      onChange={(e) => {
+                        setProfile({...profile, email: e.target.value});
+                        setEmailChanged(true);
+                      }}
+                    />
+                    {profile.email === storedUser.email && (
+                      <CheckCircle2 size={16} color="var(--accent-green)" style={{marginLeft: "10px"}} />
+                    )}
+                  </div>
                   {emailChanged && !otpSent && (
-                    <button style={styles.otpBtn} onClick={sendEmailOtp} disabled={saving}>
-                      Send Verification Code
+                    <button style={styles.verifyBtn} onClick={sendEmailOtp}>
+                      Verify New Email
                     </button>
                   )}
                   {otpSent && (
-                    <div style={styles.otpContainer}>
-                      <input
-                        placeholder="Enter 6-digit code"
-                        value={otp}
-                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                        style={styles.input}
-                        maxLength={6}
-                      />
-                      <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
-                        <button style={styles.verifyBtn} onClick={verifyEmailOtp} disabled={saving}>
-                          {saving ? "Verifying..." : "Verify Email"}
-                        </button>
-                        <button style={styles.cancelBtnSmall} onClick={() => { setOtpSent(false); setEmailChanged(false); setOtp(""); loadUser(); }}>
-                          Cancel
-                        </button>
+                    <div style={styles.otpBox}>
+                      <p style={styles.otpText}>A code was sent to <strong>{pendingEmail}</strong></p>
+                      <div style={styles.otpInputGroup}>
+                        <input 
+                          placeholder="6-digit code"
+                          value={otp}
+                          onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0,6))}
+                          style={styles.otpInput}
+                        />
+                        <button style={styles.otpVerifyBtn} onClick={verifyEmailOtp}>Verify</button>
+                        <button style={styles.otpCancelBtn} onClick={() => setOtpSent(false)}><X size={16} /></button>
                       </div>
                     </div>
                   )}
                 </div>
-                <button style={styles.primaryBtn} onClick={saveProfile} disabled={saving || emailChanged}>
-                  {saving ? "Saving..." : "Save Profile"}
-                </button>
 
-                <div style={styles.divider} />
-                <h2 style={styles.sectionHeader}>Notification Preferences</h2>
-                <div style={styles.prefList}>
-                  <div style={styles.prefItem}>
-                    <div>
-                      <strong style={styles.prefLabel}>Email Notifications</strong>
-                      <p style={styles.prefDesc}>Receive booking confirmations and updates via email</p>
-                    </div>
-                    <label style={styles.toggle}>
-                      <input
-                        type="checkbox"
+                <hr style={styles.hr} />
+
+                <div style={styles.notifications}>
+                  <h3 style={styles.cardTitle}>Email Notifications</h3>
+                  <div style={styles.toggleRow}>
+                    <span>Receive booking updates & reminders</span>
+                    <label style={styles.switch}>
+                      <input 
+                        type="checkbox" 
                         checked={profile.notifyEmail}
                         onChange={(e) => saveNotificationPrefs("notifyEmail", e.target.checked)}
                       />
-                      <span style={{
-                        ...styles.toggleSlider,
-                        background: profile.notifyEmail ? "var(--accent-green)" : "var(--bg-tertiary)"
-                      }}></span>
-                    </label>
-                  </div>
-                  <div style={styles.prefItem}>
-                    <div>
-                      <strong style={styles.prefLabel}>Web Notifications</strong>
-                      <p style={styles.prefDesc}>Receive in-app notifications and alerts</p>
-                    </div>
-                    <label style={styles.toggle}>
-                      <input
-                        type="checkbox"
-                        checked={profile.notifyWeb}
-                        onChange={(e) => saveNotificationPrefs("notifyWeb", e.target.checked)}
-                      />
-                      <span style={{
-                        ...styles.toggleSlider,
-                        background: profile.notifyWeb ? "var(--accent-green)" : "var(--bg-tertiary)"
-                      }}></span>
+                      <span style={styles.slider}></span>
                     </label>
                   </div>
                 </div>
 
-                <div style={styles.divider} />
-                <h2 style={styles.sectionHeader}>Change Password</h2>
-                <div style={styles.formGrid}>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>Current Password</label>
-                    <input
-                      type="password"
-                      placeholder="Current Password"
+                <button style={styles.saveBtn} onClick={updateProfile} disabled={saving}>
+                  <Save size={18} />
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            )}
+
+            {/* SECURITY TAB */}
+            {activeTab === "security" && (
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>Change Password</h3>
+                <div style={styles.field}>
+                  <label style={styles.label}>Current Password</label>
+                  <div style={styles.inputBox}>
+                    <Lock size={16} style={styles.inputIcon} />
+                    <input 
+                      type={showCurrentPass ? "text" : "password"}
+                      style={styles.input}
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      style={styles.input}
                     />
-                  </div>
-                  <div style={styles.formGroup}>
-                    <label style={styles.label}>New Password</label>
-                    <input
-                      type="password"
-                      placeholder="New Password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      style={styles.input}
-                    />
+                    <div onClick={() => setShowCurrentPass(!showCurrentPass)} style={styles.eyeBtn}>
+                      {showCurrentPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </div>
                   </div>
                 </div>
-                <button style={styles.greenBtn} onClick={changePassword} disabled={saving}>
+                <div style={styles.field}>
+                  <label style={styles.label}>New Password</label>
+                  <div style={styles.inputBox}>
+                    <Lock size={16} style={styles.inputIcon} />
+                    <input 
+                      type={showNewPass ? "text" : "password"}
+                      style={styles.input}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                    <div onClick={() => setShowNewPass(!showNewPass)} style={styles.eyeBtn}>
+                      {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </div>
+                  </div>
+                </div>
+                <button style={styles.saveBtn} onClick={changePassword} disabled={saving}>
                   Update Password
                 </button>
               </div>
             )}
 
-            {activeTab === "notifications" && (
-              <div style={styles.contentCard}>
-                <h2 style={styles.sectionHeader}>Your Notifications</h2>
-                <p style={styles.helperText}>
-                  View all your recent notifications and updates.
-                </p>
-
-                {loadingNotifications ? (
-                  <p style={styles.loading}>Loading notifications...</p>
-                ) : notifications.length === 0 ? (
-                  <p style={styles.emptyNotif}>No notifications yet.</p>
-                ) : (
-                  <div style={styles.notifList}>
-                    {notifications.map(n => (
-                      <div
-                        key={n.id}
-                        style={{
-                          ...styles.notifCard,
-                          background: n.isRead ? "var(--bg-secondary)" : "var(--bg-tertiary)"
-                        }}
-                        onClick={() => !n.isRead && markRead(n.id)}
-                      >
-                        <div style={styles.notifRow}>
-                          <strong style={{ color: "var(--text-primary)" }}>{n.title || "Notification"}</strong>
-                          {!n.isRead && (
-                            <span style={styles.unreadBadge}>New</span>
-                          )}
-                        </div>
-                        <p style={styles.notifMessage}>{n.message}</p>
-                        {n.createdAt && (
-                          <p style={styles.notifDate}>
-                            {new Date(n.createdAt).toLocaleString()}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
+            {/* THEME TAB */}
             {activeTab === "theme" && (
-              <div style={styles.contentCard}>
-                <h2 style={styles.sectionHeader}>Theme Settings</h2>
-                <p style={styles.helperText}>
-                  Choose your preferred appearance for the dashboard.
-                </p>
-                
-                <div style={themeStyles.options}>
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>Appearance</h3>
+                <p style={styles.helperText}>Personalize your dashboard experience.</p>
+                <div style={styles.themeGrid}>
                   <div 
-                    style={{
-                      ...themeStyles.option,
-                      ...(theme === "system" ? themeStyles.optionActive : {})
-                    }}
+                    style={{...styles.themeCard, ...(theme === "system" ? styles.themeCardActive : {})}}
                     onClick={() => setThemeMode("system")}
                   >
-                    <div style={themeStyles.optionIcon}>S</div>
-                    <div style={themeStyles.optionText}>
-                      <strong>System Default</strong>
-                      <span style={styles.optionDesc}>App's default dark blue theme</span>
-                    </div>
+                    <div style={{...styles.themePreview, background: "var(--bg-tertiary)"}} />
+                    <span>System Default</span>
                   </div>
-                  
                   <div 
-                    style={{
-                      ...themeStyles.option,
-                      ...(theme === "light" ? themeStyles.optionActive : {})
-                    }}
+                    style={{...styles.themeCard, ...(theme === "light" ? styles.themeCardActive : {})}}
                     onClick={() => setThemeMode("light")}
                   >
-                    <div style={themeStyles.optionIcon}>L</div>
-                    <div style={themeStyles.optionText}>
-                      <strong>Light Mode</strong>
-                      <span style={styles.optionDesc}>Light background with dark text</span>
-                    </div>
+                    <div style={{...styles.themePreview, background: "#f8fafc", border: "1px solid #e2e8f0"}} />
+                    <span>Light Mode</span>
                   </div>
-                  
                   <div 
-                    style={{
-                      ...themeStyles.option,
-                      ...(theme === "dark" ? themeStyles.optionActive : {})
-                    }}
+                    style={{...styles.themeCard, ...(theme === "dark" ? styles.themeCardActive : {})}}
                     onClick={() => setThemeMode("dark")}
                   >
-                    <div style={themeStyles.optionIcon}>D</div>
-                    <div style={themeStyles.optionText}>
-                      <strong>Dark Mode</strong>
-                      <span style={styles.optionDesc}>Black background with light text</span>
-                    </div>
+                    <div style={{...styles.themePreview, background: "#0f172a"}} />
+                    <span>Dark Mode</span>
                   </div>
                 </div>
-
-                <p style={styles.currentTheme}>
-                  Current: <strong>{getThemeLabel()}</strong>
-                </p>
               </div>
             )}
 
+            {/* TERMS TAB */}
             {activeTab === "terms" && (
-              <div style={styles.contentCard}>
-                <h2 style={styles.sectionHeader}>Terms & Conditions</h2>
-                <p style={styles.helperText}>
-                  Please read our terms and conditions carefully.
-                </p>
-                <div style={styles.termsContent}>
-                  <h3 style={styles.termsTitle}>1. Service Agreement</h3>
-                  <p style={styles.termsText}>
-                    By using our auto detailing services, you agree to the terms and conditions outlined here.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>2. Booking Policy</h3>
-                  <p style={styles.termsText}>
-                    All bookings must be made at least 30 minutes in advance. Cancellations must be requested 24 hours before the scheduled appointment.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>3. Payment Terms</h3>
-                  <p style={styles.termsText}>
-                    Full payment is required upon completion of services. For bookings over ₱5,000, a downpayment may be required to secure your slot.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>4. Vehicle Responsibility</h3>
-                  <p style={styles.termsText}>
-                    While we take utmost care with your vehicle, please remove all personal belongings before the service appointment.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>5. Privacy Policy</h3>
-                  <p style={styles.termsText}>
-                    Your personal information is protected and will only be used for service-related communications.
-                  </p>
+              <div style={styles.card}>
+                <h3 style={styles.cardTitle}>Terms of Service</h3>
+                <div style={styles.termsBox}>
+                  <h4 style={styles.termsHeading}>1. Service Usage</h4>
+                  <p style={styles.termsText}>RENEW Auto Detailing provides premium vehicle care services. By booking, you agree to our service standards and pricing.</p>
+                  <h4 style={styles.termsHeading}>2. Cancellations</h4>
+                  <p style={styles.termsText}>Cancellations must be requested at least 24 hours before the appointment. Late cancellations may be subject to a fee.</p>
+                  <h4 style={styles.termsHeading}>3. Privacy</h4>
+                  <p style={styles.termsText}>We value your privacy. Your data is used strictly for booking and notification purposes.</p>
                 </div>
               </div>
             )}
-
-            {activeTab === "danger" && (
-              <div style={styles.contentCard}>
-                <h2 style={styles.sectionHeader}>Delete Account</h2>
-                <p style={styles.helperText}>
-                  Permanently delete your account and all associated data.
-                </p>
-                <div style={styles.dangerWarning}>
-                  <p style={{ marginBottom: "16px" }}>
-                    <strong>Warning:</strong> This action cannot be undone easily. Your account will be deactivated for 15 days before permanent deletion.
-                  </p>
-                  <button 
-                    style={styles.dangerBtn}
-                    onClick={() => setShowDeleteModal(true)}
-                  >
-                    Request Account Deletion
-                  </button>
-                </div>
-
-                {showDeleteModal && (
-                  <div style={styles.modalOverlay} onClick={() => setShowDeleteModal(false)}>
-                    <div style={styles.modal} onClick={e => e.stopPropagation()}>
-                      <h3 style={styles.modalTitle}>Delete Your Account?</h3>
-                      <p style={styles.deleteText}>
-                        Are you sure you want to delete your account?
-                      </p>
-                      <p style={styles.deleteInfo}>
-                        If you continue, your account will be <strong>deactivated for 15 days</strong> from today.
-                        After that, your account and all associated booking history will be <strong>permanently deleted</strong>.
-                      </p>
-                      <p style={styles.deleteHighlight}>
-                        You can cancel this anytime by simply logging in within the 15-day period.
-                      </p>
-                      <div style={styles.modalActions}>
-                        <button style={styles.cancelBtn} onClick={() => setShowDeleteModal(false)}>
-                          Keep My Account
-                        </button>
-                        <button style={styles.confirmDeleteBtn} onClick={requestDeleteAccount}>
-                          Yes, Delete My Account
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );
 };
 
-const pageStyles = {
-  page: {
-    display: "flex",
-    background: "var(--bg-primary)",
-    minHeight: "100vh",
-    fontFamily: "Poppins, system-ui"
-  },
-  main: {
-    marginLeft: "260px",
-    padding: "40px",
-    width: "100%",
-    color: "var(--text-primary)"
-  },
-  title: {
-    marginBottom: "24px",
-    fontSize: "28px",
-    fontWeight: "700"
-  }
-};
-
 const styles = {
-  tabContainer: {
-    display: "flex",
-    gap: "4px",
-    marginBottom: "30px",
-    background: "var(--bg-secondary)",
-    padding: "6px",
-    borderRadius: "12px",
-    width: "fit-content"
+  page: { display: "flex", background: "var(--bg-primary)", minHeight: "100vh", fontFamily: "Poppins, system-ui" },
+  main: { marginLeft: "260px", padding: "40px", width: "100%", color: "var(--text-primary)" },
+  title: { fontSize: "28px", fontWeight: "800", marginBottom: "32px" },
+  container: { display: "flex", gap: "40px" },
+  tabs: { width: "200px", display: "flex", flexDirection: "column", gap: "8px" },
+  tab: { 
+    display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", borderRadius: "10px",
+    border: "none", background: "transparent", color: "var(--text-secondary)", 
+    cursor: "pointer", fontWeight: "600", transition: "0.2s", textAlign: "left"
   },
-  tab: {
-    padding: "12px 24px",
-    borderRadius: "8px",
-    border: "none",
-    background: "transparent",
-    color: "var(--text-secondary)",
-    cursor: "pointer",
-    fontWeight: "500",
-    fontSize: "14px",
-    transition: "all 0.2s ease"
+  tabActive: { background: "var(--card-bg)", color: "var(--accent-blue)", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" },
+  content: { flex: 1 },
+  card: { background: "var(--card-bg)", padding: "32px", borderRadius: "20px", border: "1px solid var(--border-color)" },
+  cardTitle: { fontSize: "18px", fontWeight: "700", marginBottom: "24px" },
+  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" },
+  field: { display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" },
+  label: { fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" },
+  inputBox: { position: "relative", display: "flex", alignItems: "center" },
+  inputIcon: { position: "absolute", left: "14px", color: "var(--text-secondary)", opacity: 0.5 },
+  input: { 
+    width: "100%", padding: "12px 12px 12px 40px", borderRadius: "10px", border: "1px solid var(--border-color)",
+    background: "var(--bg-primary)", color: "var(--text-primary)", outline: "none"
   },
-  activeTab: {
-    background: "var(--card-bg)",
-    color: "var(--text-primary)",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.15)"
+  eyeBtn: { position: "absolute", right: "14px", cursor: "pointer", color: "var(--text-secondary)" },
+  hr: { margin: "32px 0", border: "none", borderTop: "1px solid var(--border-color)" },
+  saveBtn: { 
+    display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
+    marginTop: "24px", padding: "14px 28px", borderRadius: "12px", border: "none",
+    background: "var(--accent-blue)", color: "white", fontWeight: "700", cursor: "pointer"
   },
-  contentCard: {
-    background: "var(--card-bg)",
-    padding: "32px",
-    borderRadius: "16px",
-    border: "1px solid var(--border-color)",
-    maxWidth: "700px"
-  },
-  sectionHeader: {
-    fontSize: "20px",
-    fontWeight: "600",
-    marginBottom: "20px",
-    color: "var(--text-primary)"
-  },
-  formGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "20px",
-    marginBottom: "20px"
-  },
-  formGroup: {
-    display: "flex",
-    flexDirection: "column"
-  },
-  label: {
-    marginBottom: "8px",
-    fontSize: "13px",
-    fontWeight: "500",
-    color: "var(--text-secondary)"
-  },
-  input: {
-    width: "100%",
-    padding: "12px 16px",
-    borderRadius: "10px",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "var(--border-color)",
-    background: "var(--bg-tertiary)",
-    color: "var(--text-primary)",
-    outline: "none",
-    fontSize: "14px",
-    boxSizing: "border-box"
-  },
-  primaryBtn: {
-    padding: "14px 28px",
-    borderRadius: "10px",
-    border: "none",
-    background: "var(--accent-blue)",
-    color: "#fff",
-    fontWeight: "600",
-    cursor: "pointer",
-    fontSize: "14px"
-  },
-  greenBtn: {
-    padding: "14px 28px",
-    borderRadius: "10px",
-    border: "none",
-    background: "var(--accent-green)",
-    color: "#fff",
-    fontWeight: "600",
-    cursor: "pointer",
-    fontSize: "14px"
-  },
-  otpBtn: {
-    width: "100%",
-    padding: "10px",
-    borderRadius: "8px",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "var(--accent-blue)",
-    background: "transparent",
-    color: "var(--accent-blue)",
-    fontWeight: "600",
-    cursor: "pointer",
-    marginTop: "10px",
-    fontSize: "13px"
-  },
-  otpContainer: {
-    marginTop: "10px"
-  },
-  verifyBtn: {
-    flex: 1,
-    padding: "10px",
-    borderRadius: "8px",
-    border: "none",
-    background: "var(--accent-green)",
-    color: "#fff",
-    fontWeight: "600",
-    cursor: "pointer",
-    fontSize: "13px"
-  },
-  cancelBtnSmall: {
-    flex: 1,
-    padding: "10px",
-    borderRadius: "8px",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "var(--border-color)",
-    background: "transparent",
-    color: "var(--text-primary)",
-    fontWeight: "600",
-    cursor: "pointer",
-    fontSize: "13px"
-  },
-  divider: {
-    height: "1px",
-    background: "var(--border-color)",
-    margin: "32px 0"
-  },
-  helperText: {
-    fontSize: "14px",
-    color: "var(--text-secondary)",
-    marginBottom: "24px"
-  },
-  currentTheme: {
-    marginTop: "24px",
-    fontSize: "14px",
-    color: "var(--text-secondary)"
-  },
-  optionDesc: {
-    fontSize: "12px",
-    color: "var(--text-secondary)",
-    marginTop: "4px"
-  },
-  termsContent: {
-    background: "var(--bg-secondary)",
-    padding: "24px",
-    borderRadius: "12px"
-  },
-  termsTitle: {
-    fontSize: "16px",
-    fontWeight: "600",
-    marginBottom: "8px",
-    marginTop: "20px"
-  },
-  termsText: {
-    fontSize: "14px",
-    color: "var(--text-secondary)",
-    lineHeight: "1.6",
-    marginBottom: "12px"
-  },
-  dangerWarning: {
-    padding: "24px",
-    background: "rgba(239, 68, 68, 0.1)",
-    borderRadius: "12px",
-    border: "1px solid rgba(239, 68, 68, 0.3)"
-  },
-  dangerBtn: {
-    padding: "14px 28px",
-    borderRadius: "10px",
-    border: "none",
-    background: "var(--accent-red)",
-    color: "#fff",
-    fontWeight: "600",
-    cursor: "pointer",
-    fontSize: "14px"
-  },
-  modalOverlay: {
-    position: "fixed",
-    top: 0, left: 0, right: 0, bottom: 0,
-    background: "rgba(0,0,0,0.8)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000
-  },
-  modal: {
-    background: "var(--card-bg)",
-    padding: "32px",
-    borderRadius: "16px",
-    width: "100%",
-    maxWidth: "480px",
-    border: "1px solid var(--border-color)"
-  },
-  modalTitle: {
-    marginBottom: "16px",
-    fontSize: "20px",
-    fontWeight: "600"
-  },
-  deleteText: {
-    fontSize: "16px",
-    marginBottom: "12px"
-  },
-  deleteInfo: {
-    fontSize: "14px",
-    color: "var(--text-secondary)",
-    lineHeight: "1.6",
-    marginBottom: "12px"
-  },
-  deleteHighlight: {
-    fontSize: "14px",
-    color: "var(--accent-green)",
-    fontWeight: "500",
-    marginBottom: "20px"
-  },
-  modalActions: {
-    display: "flex",
-    gap: "12px"
-  },
-  cancelBtn: {
-    flex: 1,
-    padding: "14px",
-    borderRadius: "10px",
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: "var(--border-color)",
-    background: "transparent",
-    color: "var(--text-primary)",
-    cursor: "pointer",
-    fontWeight: "600",
-    fontSize: "14px"
-  },
-  confirmDeleteBtn: {
-    flex: 1,
-    padding: "14px",
-    borderRadius: "10px",
-    border: "none",
-    background: "var(--accent-red)",
-    color: "#fff",
-    fontWeight: "600",
-    cursor: "pointer",
-    fontSize: "14px"
-  },
-  loading: {
-    fontSize: "14px",
-    color: "var(--text-secondary)"
-  },
-  prefList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px"
-  },
-  prefItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "16px",
-    background: "var(--bg-secondary)",
-    borderRadius: "12px"
-  },
-  prefLabel: {
-    fontSize: "14px",
-    fontWeight: "600",
-    color: "var(--text-primary)"
-  },
-  prefDesc: {
-    fontSize: "12px",
-    color: "var(--text-secondary)",
-    marginTop: "4px"
-  },
-  toggle: {
-    position: "relative",
-    display: "inline-block",
-    width: "48px",
-    height: "26px",
-    cursor: "pointer"
-  },
-  toggleSlider: {
-    position: "absolute",
-    inset: 0,
-    borderRadius: "13px",
-    transition: "0.3s"
-  },
-  emptyNotif: {
-    fontSize: "14px",
-    color: "var(--text-secondary)",
-    textAlign: "center",
-    padding: "40px"
-  },
-  notifList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px"
-  },
-  notifCard: {
-    padding: "16px",
-    borderRadius: "12px",
-    cursor: "pointer",
-    border: "1px solid var(--border-color)"
-  },
-  notifRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: "6px"
-  },
-  unreadBadge: {
-    background: "var(--accent-blue)",
-    color: "white",
-    padding: "2px 8px",
-    borderRadius: "6px",
-    fontSize: "12px"
-  },
-  notifMessage: {
-    fontSize: "14px",
-    color: "var(--text-secondary)",
-    marginBottom: "6px"
-  },
-  notifDate: {
-    fontSize: "12px",
-    opacity: 0.6,
-    color: "var(--text-secondary)"
-  }
-};
-
-const themeStyles = {
-  options: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px"
-  },
-  option: {
-    display: "flex",
-    alignItems: "center",
-    gap: "16px",
-    padding: "20px",
-    borderRadius: "12px",
-    borderWidth: "2px",
-    borderStyle: "solid",
-    borderColor: "var(--border-color)",
-    cursor: "pointer",
-    transition: "0.2s"
-  },
-  optionActive: {
-    borderColor: "var(--accent-blue)",
-    background: "rgba(59, 130, 246, 0.1)"
-  },
-  optionIcon: {
-    width: "56px",
-    height: "56px",
-    borderRadius: "12px",
-    background: "var(--bg-tertiary)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: "700",
-    fontSize: "20px",
-    color: "var(--text-primary)"
-  },
-  optionText: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px"
-  }
+  verifyBtn: { marginTop: "12px", padding: "8px 16px", borderRadius: "8px", border: "none", background: "rgba(56, 189, 248, 0.1)", color: "var(--accent-blue)", fontWeight: "600", cursor: "pointer" },
+  otpBox: { marginTop: "20px", padding: "20px", background: "var(--bg-primary)", borderRadius: "14px" },
+  otpText: { fontSize: "13px", marginBottom: "12px" },
+  otpInputGroup: { display: "flex", gap: "10px" },
+  otpInput: { flex: 1, padding: "10px", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--card-bg)", color: "var(--text-primary)", textAlign: "center", letterSpacing: "4px", fontWeight: "700" },
+  otpVerifyBtn: { padding: "0 20px", borderRadius: "8px", border: "none", background: "var(--accent-green)", color: "white", fontWeight: "600", cursor: "pointer" },
+  otpCancelBtn: { padding: "10px", borderRadius: "8px", border: "none", background: "var(--bg-tertiary)", color: "var(--text-primary)", cursor: "pointer" },
+  themeGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "20px", marginTop: "20px" },
+  themeCard: { padding: "16px", borderRadius: "14px", border: "2px solid var(--border-color)", cursor: "pointer", textAlign: "center", display: "flex", flexDirection: "column", gap: "12px" },
+  themeCardActive: { borderColor: "var(--accent-blue)", background: "rgba(56, 189, 248, 0.05)" },
+  themePreview: { height: "60px", borderRadius: "8px" },
+  termsBox: { padding: "20px", background: "var(--bg-primary)", borderRadius: "14px", border: "1px solid var(--border-color)" },
+  termsHeading: { fontSize: "14px", fontWeight: "700", marginBottom: "8px", marginTop: "16px" },
+  termsText: { fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.6" },
+  helperText: { fontSize: "14px", color: "var(--text-secondary)", marginBottom: "20px" },
+  toggleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  switch: { position: "relative", display: "inline-block", width: "46px", height: "24px" },
+  slider: { position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#ccc", transition: ".4s", borderRadius: "24px" }
 };
 
 export default CustomerSettings;

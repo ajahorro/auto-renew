@@ -1,186 +1,126 @@
 const prisma = require("../config/prisma");
+const { sendEmail } = require("./email.service");
 
-async function createNotification(userId, data) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user || !user.notifyWeb) return;
+/**
+ * Centralised notification service.
+ *
+ * Every controller imports from here instead of defining its own
+ * createNotification / notifyAdmins helpers.
+ *
+ * Handles:
+ *  - User preference checks (notifyWeb / notifyEmail)
+ *  - In-app notification creation
+ *  - Email dispatch (non-blocking, fire-and-forget)
+ */
 
+/**
+ * Create a notification for a single user.
+ * Respects the user's notifyWeb / notifyEmail preferences.
+ *
+ * @param {string}  userId
+ * @param {object}  data          - { title, message, type, actionType, actorId, actorName, targetId, targetName }
+ * @param {object}  [tx]          - Optional Prisma transaction client
+ * @returns {Promise<object|null>} The created notification, or null if skipped
+ */
+async function createNotification(userId, data, tx) {
   try {
-    return await prisma.notification.create({
-      data: {
-        userId,
-        title: data.title,
-        message: data.message,
-        type: data.type || "GENERAL",
-        actionType: data.actionType,
-        targetId: data.targetId,
-        targetName: data.targetName,
-        actorId: data.actorId,
-        actorName: data.actorName,
-        relatedId: data.relatedId
-      }
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, notifyEmail: true, notifyWeb: true }
     });
+
+    if (!user) return null;
+
+    const hasWeb = user.notifyWeb !== false;
+    const hasEmail = user.notifyEmail !== false;
+
+    if (!hasWeb && !hasEmail) return null;
+
+    const db = tx || prisma;
+
+    const inAppNotification = hasWeb
+      ? await db.notification.create({
+          data: {
+            userId,
+            title: data.title,
+            message: data.message,
+            type: data.type || "GENERAL",
+            actionType: data.actionType || null,
+            actorId: data.actorId || null,
+            actorName: data.actorName || null,
+            targetId: data.targetId || null,
+            targetName: data.targetName || null
+          }
+        })
+      : null;
+
+    if (hasEmail && user.email) {
+      const emailSubject = `[RENEW Auto Detailing] ${data.title}`;
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1e40af;">${data.title}</h2>
+          <p style="color: #374151; font-size: 16px;">${data.message}</p>
+          <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+            Log in to your account for more details.
+          </p>
+        </div>
+      `;
+
+      sendEmail(user.email, emailSubject, emailHtml).catch(err => {
+        console.error("Email send failed:", err.message);
+      });
+    }
+
+    return inAppNotification;
   } catch (error) {
-    console.error("Notification error:", error.message);
+    console.error("Failed to create notification:", error);
+    return null;
   }
 }
 
-async function notifyBookingCreated(booking, customer) {
-  await createNotification(customer.id, {
-    title: "Booking Received",
-    message: `Your booking request for ${new Date(booking.appointmentStart).toLocaleDateString()} has been received.`,
-    type: "BOOKING",
-    actionType: "CREATED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-
-  const admins = await prisma.user.findMany({
-    where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
-  });
-
-  for (const admin of admins) {
-    await createNotification(admin.id, {
-      title: "New Booking",
-      message: `New booking from ${customer.fullName}. Total: ₱${Number(booking.totalAmount).toLocaleString()}`,
-      type: "BOOKING",
-      actionType: "CREATED",
-      targetId: String(booking.id),
-      targetName: `Booking #${booking.id}`,
-      actorId: customer.id,
-      actorName: customer.fullName
+/**
+ * Notify all active admins (ADMIN + SUPER_ADMIN).
+ *
+ * @param {object} data - Notification data (same shape as createNotification)
+ * @param {object} [tx] - Optional Prisma transaction client
+ */
+async function notifyAdmins(data, tx) {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
     });
+    for (const admin of admins) {
+      await createNotification(admin.id, data, tx);
+    }
+  } catch (error) {
+    console.error("Failed to notify admins:", error);
   }
 }
 
-async function notifyPaymentSubmitted(payment, booking, user) {
-  await createNotification(user.id, {
-    title: "Payment Submitted",
-    message: `Payment of ₱${Number(payment.amount).toLocaleString()} submitted for booking #${booking.id}`,
-    type: "PAYMENT",
-    actionType: "SUBMITTED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-
-  const admins = await prisma.user.findMany({
-    where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
-  });
-
-  for (const admin of admins) {
-    await createNotification(admin.id, {
-      title: "Payment Pending Verification",
-      message: `₱${Number(payment.amount).toLocaleString()} payment submitted for Booking #${booking.id}`,
-      type: "PAYMENT",
-      actionType: "SUBMITTED",
-      targetId: String(booking.id),
-      targetName: `Booking #${booking.id}`
-    });
-  }
-}
-
-async function notifyPaymentApproved(payment, booking, user) {
-  await createNotification(user.id, {
-    title: "Payment Approved",
-    message: `Payment of ₱${Number(payment.amount).toLocaleString()} for Booking #${booking.id} has been approved.`,
-    type: "PAYMENT",
-    actionType: "APPROVED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-}
-
-async function notifyPaymentRejected(payment, booking, user, reason) {
-  await createNotification(user.id, {
-    title: "Payment Rejected",
-    message: `Payment for Booking #${booking.id} was rejected. Reason: ${reason}`,
-    type: "PAYMENT",
-    actionType: "REJECTED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-}
-
-async function notifyCancellationRequested(booking, customer, reason) {
-  await createNotification(customer.id, {
-    title: "Cancellation Requested",
-    message: `Your cancellation request for Booking #${booking.id} has been submitted.`,
+/**
+ * Convenience wrapper: notify admins about a booking event.
+ *
+ * @param {number} bookingId
+ * @param {string} title
+ * @param {string} message
+ * @param {string} [actorId]
+ * @param {string} [actorName]
+ */
+async function notifyAdminsBookingUpdated(bookingId, title, message, actorId, actorName) {
+  await notifyAdmins({
+    title,
+    message,
     type: "BOOKING",
-    actionType: "CANCELLATION_REQUESTED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-
-  const admins = await prisma.user.findMany({
-    where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
-  });
-
-  for (const admin of admins) {
-    await createNotification(admin.id, {
-      title: "Cancellation Request",
-      message: `Cancellation request from ${customer.fullName} for Booking #${booking.id}`,
-      type: "BOOKING",
-      actionType: "CANCELLATION_REQUESTED",
-      targetId: String(booking.id),
-      targetName: `Booking #${booking.id}`,
-      actorId: customer.id,
-      actorName: customer.fullName
-    });
-  }
-}
-
-async function notifyCancellationApproved(booking, user, adminNote = "") {
-  await createNotification(user.id, {
-    title: "Cancellation Approved",
-    message: `Your cancellation for Booking #${booking.id} has been approved.${adminNote ? ` Note: ${adminNote}` : ""}`,
-    type: "BOOKING",
-    actionType: "CANCELLATION_APPROVED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-}
-
-async function notifyCancellationRejected(booking, user, adminNote = "") {
-  await createNotification(user.id, {
-    title: "Cancellation Rejected",
-    message: `Your cancellation request for Booking #${booking.id} was rejected.${adminNote ? ` Reason: ${adminNote}` : ""}`,
-    type: "BOOKING",
-    actionType: "CANCELLATION_REJECTED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-}
-
-async function notifyRefundProcessed(booking, user) {
-  await createNotification(user.id, {
-    title: "Refund Processed",
-    message: `Refund of ₱${Number(booking.refundAmount).toLocaleString()} for Booking #${booking.id} has been processed.`,
-    type: "PAYMENT",
-    actionType: "REFUND_PROCESSED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
-  });
-}
-
-async function notifyStatusChanged(booking, oldStatus, newStatus, user) {
-  await createNotification(user.id, {
-    title: "Booking Status Updated",
-    message: `Booking #${booking.id} status changed from ${oldStatus} to ${newStatus}`,
-    type: "BOOKING",
-    actionType: "STATUS_CHANGED",
-    targetId: String(booking.id),
-    targetName: `Booking #${booking.id}`
+    actionType: "BOOKING_UPDATED",
+    actorId: actorId || null,
+    actorName: actorName || null,
+    targetId: String(bookingId),
+    targetName: `Booking #${bookingId}`
   });
 }
 
 module.exports = {
   createNotification,
-  notifyBookingCreated,
-  notifyPaymentSubmitted,
-  notifyPaymentApproved,
-  notifyPaymentRejected,
-  notifyCancellationRequested,
-  notifyCancellationApproved,
-  notifyCancellationRejected,
-  notifyRefundProcessed,
-  notifyStatusChanged
+  notifyAdmins,
+  notifyAdminsBookingUpdated
 };

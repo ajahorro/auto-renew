@@ -159,7 +159,7 @@ const AdminSchedule = () => {
           </div>
           <div style={styles.legendItem}>
             <span style={{...styles.legendDot, background: "#3b82f6"}}></span>
-            <span>Blue = Scheduled booking (confirmed)</span>
+            <span>Blue = Confirmed booking</span>
           </div>
           <div style={styles.legendItem}>
             <span style={{...styles.legendDot, background: "#f97316"}}></span>

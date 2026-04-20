@@ -1,109 +1,6 @@
-const prisma = require("../config/prisma");
-const { sendEmail } = require("../services/email.service");
-
-const LOG_REQUEST = (req, context) => {
-  console.log(`[${context}] Request Body:`, JSON.stringify(req.body, null, 2));
-  console.log(`[${context}] Request Params:`, JSON.stringify(req.params, null, 2));
-  console.log(`[${context}] Request Query:`, JSON.stringify(req.query, null, 2));
-};
-
-const createNotification = async (userId, data) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true, notifyEmail: true, notifyWeb: true }
-    });
-
-    if (!user) {
-      console.log(`Notification skipped - user ${userId} not found`);
-      return null;
-    }
-
-    const hasWeb = user.notifyWeb !== false;
-    const hasEmail = user.notifyEmail !== false;
-
-    if (!hasWeb && !hasEmail) {
-      console.log(`Notification skipped - user ${userId} has disabled all notifications`);
-      return null;
-    }
-
-    const inAppNotification = hasWeb ? await prisma.notification.create({
-      data: {
-        userId,
-        title: data.title,
-        message: data.message,
-        type: data.type || "GENERAL",
-        actionType: data.actionType,
-        actorId: data.actorId,
-        actorName: data.actorName,
-        targetId: data.targetId,
-        targetName: data.targetName
-      }
-    }) : null;
-
-    if (hasEmail && user.email) {
-      const emailSubject = `[RENEW Auto Detailing] ${data.title}`;
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1e40af;">${data.title}</h2>
-          <p style="color: #374151; font-size: 16px;">${data.message}</p>
-          <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
-            Log in to your account for more details.
-          </p>
-        </div>
-      `;
-      
-      sendEmail(user.email, emailSubject, emailHtml).catch(err => {
-        console.error("Email send failed:", err.message);
-      });
-    }
-
-    return inAppNotification;
-  } catch (error) {
-    console.error("Failed to create notification:", error);
-  }
-};
-
-const notifyAdmins = async (data) => {
-  try {
-    const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
-    });
-    for (const admin of admins) {
-      await createNotification(admin.id, data);
-    }
-  } catch (error) {
-    console.error("Failed to notify admins:", error);
-  }
-};
-
-const notifyAdminsBookingUpdated = async (bookingId, title, message, actorId, actorName) => {
-  try {
-    const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
-    });
-    for (const admin of admins) {
-      await createNotification(admin.id, {
-        title,
-        message,
-        type: "BOOKING",
-        actionType: "BOOKING_UPDATED",
-        actorId,
-        actorName,
-        targetId: String(bookingId),
-        targetName: `Booking #${bookingId}`
-      });
-    }
-  } catch (error) {
-    console.error("Failed to notify admins booking updated:", error);
-  }
-};
-
-const parseBookingId = (req) => {
-  const rawId = req.params.id || req.params.bookingId || req.body.id || req.query.id;
-  const id = Number(rawId);
-  return Number.isInteger(id) && id > 0 ? id : null;
-};
+const prisma = require("../config/prisma");
+const LOG_REQUEST = require("../utils/logRequest");
+const { createNotification } = require("../services/notification.service");
 
 const STATUS = {
   PENDING: "PENDING",
@@ -115,21 +12,51 @@ const STATUS = {
   PENDING_PAYMENT: "PENDING_PAYMENT"
 };
 
-function isValidTransition(current, next) {
-  const map = {
-    PENDING: ["CONFIRMED", "CANCELLED"],
-    CONFIRMED: ["ONGOING", "CANCELLED"],
-    ONGOING: ["COMPLETED"],
-    COMPLETED: [],
-    CANCELLED: []
-  };
+const parseBookingId = (req) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return null;
+  return id;
+};
 
-  return map[current]?.includes(next);
-}
+const isPrivilegedRole = (role) => {
+  const r = String(role || "").toUpperCase();
+  return r === "ADMIN" || r === "SUPER_ADMIN";
+};
 
-function isPrivilegedRole(role) {
-  return role === "ADMIN" || role === "SUPER_ADMIN";
-}
+const VALID_TRANSITIONS = {
+  PENDING: ["CONFIRMED", "CANCELLED", "ONGOING"],
+  CONFIRMED: ["ONGOING", "CANCELLED", "COMPLETED"],
+  SCHEDULED: ["ONGOING", "CANCELLED"],
+  ONGOING: ["COMPLETED"],
+  COMPLETED: [],
+  CANCELLED: [],
+  PENDING_PAYMENT: ["PENDING", "CONFIRMED", "CANCELLED"]
+};
+
+const isValidTransition = (current, next) => {
+  if (current === next) return true;
+  return VALID_TRANSITIONS[current]?.includes(next) || false;
+};
+
+const notifyAdminsBookingUpdated = async (bookingId, title, message) => {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
+    });
+    for (const admin of admins) {
+      await createNotification(admin.id, {
+        title,
+        message,
+        type: "BOOKING",
+        actionType: "BOOKING_UPDATED",
+        targetId: String(bookingId),
+        targetName: `Booking #${bookingId}`
+      });
+    }
+  } catch (error) {
+    console.error("Failed to notify admins:", error);
+  }
+};
 
 function calculateDownpayment(total) {
   if (total >= 5000) {
@@ -154,7 +81,9 @@ function getUpdatedPaymentState(booking, paymentAmount) {
 
   let nextStatus = booking.status;
   if (newAmountPaid >= totalAmount && totalAmount > 0) {
-    nextStatus = STATUS.CONFIRMED;
+    if (booking.status === STATUS.PENDING || booking.status === STATUS.PENDING_PAYMENT) {
+      nextStatus = STATUS.CONFIRMED;
+    }
   }
 
   return {
@@ -162,6 +91,17 @@ function getUpdatedPaymentState(booking, paymentAmount) {
     nextStatus,
     downpaymentSatisfied: true
   };
+}
+
+function isMissingTableError(error, tableName) {
+  return error?.code === "P2021" && String(error?.meta?.table || "").includes(tableName);
+}
+
+
+
+
+function isAddonRequestUnavailable(error) {
+  return isMissingTableError(error, "AddonRequest");
 }
 // FIX: 
 // async function updateBookingStates() {
@@ -236,7 +176,7 @@ const createBooking = async (req, res) => {
       vehicleType,
       plateNumber,
       contactNumber,
-      email,
+
       vehicleBrand,
       vehicleModel
     } = req.body;
@@ -525,9 +465,9 @@ const assignStaff = async (req, res) => {
       return res.status(400).json({ success: false, message: "Booking is locked" });
     }
 
-    // Allow assignment for PENDING, SCHEDULED, and ONGOING bookings
-    if (![STATUS.PENDING, STATUS.SCHEDULED, STATUS.ONGOING].includes(booking.status)) {
-      return res.status(400).json({ success: false, message: "Staff can only be assigned to pending, scheduled, or ongoing bookings" });
+    // Allow assignment for bookings that are still actionable before or during service.
+    if (![STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING].includes(booking.status)) {
+      return res.status(400).json({ success: false, message: "Staff can only be assigned to pending, confirmed, or ongoing bookings" });
     }
 
     if (
@@ -561,7 +501,7 @@ const assignStaff = async (req, res) => {
         where: {
           assignedStaffId: String(assignedStaffId),
           id: { not: id },
-          status: { in: [STATUS.PENDING, STATUS.SCHEDULED, STATUS.ONGOING] },
+          status: { in: [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
           appointmentStart: { lt: booking.appointmentEnd },
           appointmentEnd: { gt: booking.appointmentStart }
         }
@@ -589,7 +529,7 @@ const assignStaff = async (req, res) => {
           const workload = await prisma.booking.count({
             where: {
               assignedStaffId: staff.id,
-              status: { in: [STATUS.PENDING, STATUS.SCHEDULED, STATUS.ONGOING] }
+              status: { in: [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] }
             }
           });
           availableStaff.push({ staff, workload });
@@ -1222,7 +1162,7 @@ const addPayment = async (req, res) => {
     const { newAmountPaid, nextStatus } =
       getUpdatedPaymentState(booking, paymentAmount);
 
-    await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       await tx.payment.create({
         data: {
           bookingId: id,
@@ -1232,7 +1172,7 @@ const addPayment = async (req, res) => {
         }
       });
 
-      await tx.booking.update({
+      const updatedBooking = await tx.booking.update({
         where: { id },
         data: {
           amountPaid: newAmountPaid,
@@ -1279,12 +1219,15 @@ const addPayment = async (req, res) => {
           }
         });
       }
+
+      return updatedBooking;
     });
 
     return res.json({ 
       success: true, 
       message: "Payment added successfully",
-      newTotalPaid: newAmountPaid 
+      newTotalPaid: newAmountPaid,
+      booking: result
     });
 
   } catch (err) {
@@ -1403,10 +1346,10 @@ const getAvailability = async (req, res) => {
     return res.json({
       success: true,
       date: req.query.date,
-      slots: defaultSlots.map(time => ({ time, isFull: false, currentCount: 0, maxCount: maxBookings, available: true })),
+      slots: defaultSlots.map(time => ({ time, isFull: false, currentCount: 0, maxCount: 3, available: true })),
       availableCount: defaultSlots.length,
       fallback: true,
-      maxBookingsPerSlot: maxBookings
+      maxBookingsPerSlot: 3
     });
   }
 };
@@ -1820,6 +1763,9 @@ const createAddonRequest = async (req, res) => {
 
     return res.json({ success: true, request });
   } catch (err) {
+    if (isAddonRequestUnavailable(err)) {
+      return res.status(503).json({ success: false, message: "Add-on requests are not available until the database is updated" });
+    }
     console.error("ADDON CREATE ERROR:", err);
     return res.status(500).json({ success: false, message: "Failed to create addon request" });
   }
@@ -1907,6 +1853,9 @@ const approveAddonRequest = async (req, res) => {
 
     return res.json({ success: true, message: "Add-on approved", booking: updatedBooking });
   } catch (err) {
+    if (isAddonRequestUnavailable(err)) {
+      return res.status(503).json({ success: false, message: "Add-on requests are not available until the database is updated" });
+    }
     console.error("APPROVE ERROR:", err);
     return res.status(500).json({ success: false, message: "Failed to approve add-on request" });
   }
@@ -1952,6 +1901,9 @@ const rejectAddonRequest = async (req, res) => {
 
     return res.json({ success: true, message: "Add-on rejected" });
   } catch (err) {
+    if (isAddonRequestUnavailable(err)) {
+      return res.status(503).json({ success: false, message: "Add-on requests are not available until the database is updated" });
+    }
     console.error("REJECT ERROR:", err);
     return res.status(500).json({ success: false, message: "Failed to reject add-on request" });
   }
@@ -2068,7 +2020,7 @@ const updateBooking = async (req, res) => {
     if (booking.isLocked) {
       return res.status(403).json({
         success: false,
-        message: "This booking is locked and cannot be edited"
+        message: "This booking can no longer be edited because the appointment time has passed"
       });
     }
 
@@ -2160,7 +2112,7 @@ const updateBooking = async (req, res) => {
       where: {
         customerId: String(req.user.id),
         id: { not: id },
-        status: { in: [STATUS.PENDING, STATUS.SCHEDULED, STATUS.ONGOING] },
+        status: { in: [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
         appointmentStart: { lt: end },
         appointmentEnd: { gt: start }
       }
@@ -2241,7 +2193,7 @@ const updateBooking = async (req, res) => {
       }
     });
 
-    await notifyAdminsBookingUpdated(id, "Updated", `Customer ${booking.customer?.fullName || "Unknown"} updated their booking.`, req.user?.id, booking.customer?.fullName);
+    await notifyAdminsBookingUpdated(id, "Booking Updated", `Customer ${booking.customer?.fullName || "Unknown"} updated their booking.`);
 
     if (booking.assignedStaffId) {
       await prisma.notification.create({
@@ -2420,11 +2372,11 @@ const getBookings = async (req, res) => {
       refundAmount: booking.refundAmount ? Number(booking.refundAmount) : 0,
       equipmentCost: booking.equipmentCost ? Number(booking.equipmentCost) : 0,
       downpaymentAmount: booking.downpaymentAmount ? Number(booking.downpaymentAmount) : null,
-      items: booking.items.map(item => ({
+      items: (booking.items || []).map(item => ({
         ...item,
         priceAtBooking: item.priceAtBooking ? Number(item.priceAtBooking) : 0
       })),
-      payments: booking.payments.map(payment => ({
+      payments: (booking.payments || []).map(payment => ({
         ...payment,
         amount: payment.amount ? Number(payment.amount) : 0
       }))
@@ -2435,7 +2387,7 @@ const getBookings = async (req, res) => {
     console.error("ERROR [GET_BOOKINGS]:", error);
     res.status(500).json({ 
       success: false, 
-      message: "Internal Server Error",
+      message: "Failed to fetch bookings",
       error: process.env.NODE_ENV === "development" ? error.message : undefined
     });
   }
@@ -2454,23 +2406,25 @@ const getBookingById = async (req, res) => {
       return res.status(400).json({ success: false, message: "Invalid booking ID" });
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id },
-      include: {
-        customer: {
-          select: { 
-            id: true, 
-            fullName: true, 
-            email: true, 
-            phone: true 
-          }
-        },
-        assignedStaff: { select: { id: true, fullName: true } },
-        items: { include: { service: true } },
-        payments: true,
-        addonRequests: true
-      }
-    });
+    let booking;
+    try {
+      booking = await prisma.booking.findUnique({
+        where: { id },
+        include: {
+          customer: { select: { id: true, fullName: true, email: true, phone: true } },
+          assignedStaff: { select: { id: true, fullName: true } },
+          items: { include: { service: true } },
+          payments: true
+        }
+      });
+    } catch (dbError) {
+      console.error("Database error fetching booking:", dbError);
+      return res.status(500).json({ 
+        success: false, 
+        message: "Database error: " + (process.env.NODE_ENV === "development" ? dbError.message : "Failed to fetch booking"),
+        error: process.env.NODE_ENV === "development" ? dbError.message : undefined
+      });
+    }
 
     if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found" });
@@ -2488,11 +2442,11 @@ const getBookingById = async (req, res) => {
       refundAmount: booking.refundAmount ? Number(booking.refundAmount) : 0,
       equipmentCost: booking.equipmentCost ? Number(booking.equipmentCost) : 0,
       downpaymentAmount: booking.downpaymentAmount ? Number(booking.downpaymentAmount) : null,
-      items: booking.items.map(item => ({
+      items: (booking.items || []).map(item => ({
         ...item,
         priceAtBooking: item.priceAtBooking ? Number(item.priceAtBooking) : 0
       })),
-      payments: booking.payments.map(payment => ({
+      payments: (booking.payments || []).map(payment => ({
         ...payment,
         amount: payment.amount ? Number(payment.amount) : 0
       }))
@@ -2538,6 +2492,9 @@ const getAddonRequests = async (req, res) => {
       addons: addonsWithDetails
     });
   } catch (error) {
+    if (isAddonRequestUnavailable(error)) {
+      return res.status(503).json({ success: false, message: "Add-on requests are not available until the database is updated" });
+    }
     console.error("GET ADDON REQUESTS ERROR:", error);
     return res.status(500).json({ success: false, message: "Failed to fetch addon requests" });
   }
@@ -2677,3 +2634,4 @@ module.exports = {
   rejectAddonRequest,
   requestCancelBooking,
 };
+

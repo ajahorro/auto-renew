@@ -3,622 +3,481 @@ import { useState, useEffect } from "react"
 import toast from "react-hot-toast";
 import { confirmAction } from "../../components/ConfirmModal";
 import CustomerLayout from "../../components/CustomerLayout";
-import CustomerSidebar from "../../components/CustomerSideBar";
 import "../../App.css";
+import { 
+  User, 
+  Phone, 
+  Mail, 
+  Car, 
+  CreditCard, 
+  FileText, 
+  Calendar, 
+  CheckCircle2, 
+  Bell, 
+  Clock, 
+  History,
+  PlusCircle,
+  ArrowRight
+} from "lucide-react";
+import BookingStatusBadge from "../../components/BookingStatusBadge";
+import PaymentStatusBadge from "../../components/PaymentStatusBadge";
 
 const CustomerDashboard = () => {
-
   const canCancel = (status) => {
-    return status === "PENDING" || status === "SCHEDULED";
+    return status === "PENDING" || status === "CONFIRMED";
   };
 
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
 
-  const [booking,setBooking] = useState({
-    id:null,
-    status:"",
-    paymentStatus:"",
-    appointmentStart:null,
-    services:[],
-    notes:"",
-    totalAmount:0,
-    amountPaid:0,
-    customer:null,
-    payments:[],
-    vehicleType:"",
-    plateNumber:"",
-    contactNumber:"",
-    email:"",
-    paymentMethod:"CASH"
+  const [booking, setBooking] = useState({
+    id: null,
+    status: "",
+    paymentStatus: "",
+    appointmentStart: null,
+    services: [],
+    notes: "",
+    totalAmount: 0,
+    amountPaid: 0,
+    customer: null,
+    payments: [],
+    vehicleType: "",
+    plateNumber: "",
+    contactNumber: "",
+    email: "",
+    paymentMethod: "CASH"
   });
 
-  const [history,setHistory] = useState([]);
-  const [loading,setLoading] = useState(true);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
   
-  useEffect(()=>{
+  useEffect(() => {
     if (!token) return;
 
-const loadBooking = async () => {
+    const loadBooking = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/bookings", {
+          headers: { Authorization: `Bearer ${token}` },
+          method: "GET"
+        });
 
-  try{
+        let data;
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error("Server error");
+        }
 
-    const res = await fetch(
-      "http://localhost:5000/api/bookings",
-      {
-        headers:{
-          Authorization:`Bearer ${token}`
-        },
-        method:"GET"
+        const bookings = Array.isArray(data) ? data : data.bookings || [];
+
+        if (bookings.length === 0) {
+          setBooking({
+            id: null,
+            status: "",
+            paymentStatus: "",
+            appointmentStart: null,
+            services: [],
+            notes: "",
+            totalAmount: 0,
+            amountPaid: 0,
+            customer: null,
+            payments: [],
+            vehicleType: "",
+            plateNumber: "",
+            contactNumber: "",
+            email: "",
+            paymentMethod: "CASH"
+          });
+          setHistory([]);
+          setLoading(false);
+          return;
+        }
+
+        const filtered = bookings.filter(b => b.status !== "CANCELLED");
+        const activeBooking = filtered.find(b => b.status !== "COMPLETED") || filtered[0];
+
+        if (activeBooking) {
+          const services = activeBooking.items?.map(item => ({
+            name: item.service?.name || item.serviceNameAtBooking || "Service",
+            price: Number(item.priceAtBooking || item.price || 0)
+          })) || [];
+
+          setBooking({
+            id: activeBooking.id,
+            status: activeBooking.status,
+            paymentStatus: activeBooking.paymentStatus,
+            appointmentStart: activeBooking.appointmentStart,
+            services: services,
+            notes: activeBooking.notes || "",
+            totalAmount: Number(activeBooking.totalAmount || 0),
+            amountPaid: Number(activeBooking.amountPaid || 0),
+            customer: activeBooking.customer,
+            payments: activeBooking.payments || [],
+            vehicleType: activeBooking.vehicleType || "",
+            plateNumber: activeBooking.plateNumber || "",
+            contactNumber: activeBooking.contactNumber || "",
+            email: activeBooking.email || "",
+            paymentMethod: activeBooking.paymentMethod || "CASH"
+          });
+        }
+
+        const completedBookings = bookings.filter(b => b.status === "COMPLETED").slice(0, 2);
+        setHistory(completedBookings);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
       }
-    );
-
-    let data;
-
-try {
-  data = await res.json();
-} catch {
-  throw new Error("Server error");
-}
-
-    const bookings = Array.isArray(data) ? data : data.bookings || [];
-
-    if(bookings.length === 0){
-      setBooking({
-        id: null,
-        status: "",
-        paymentStatus: "",
-        appointmentStart: null,
-        services: [],
-        notes: "",
-        totalAmount: 0,
-        amountPaid: 0,
-        customer: null,
-        payments: [],
-        vehicleType: "",
-        plateNumber: "",
-        contactNumber: "",
-        email: "",
-        paymentMethod: "CASH"
-      });
-      setHistory([]);
-      setLoading(false);
-      return;
-    }
-
-    const filtered = bookings.filter(
-      b => b.status !== "CANCELLED"
-    );
-
-    const activeBooking =
-      filtered.find(b => b.status !== "COMPLETED")
-      || filtered[0];
-
-    if (activeBooking) {
-      const services = activeBooking.items?.map(item => ({
-        name: item.service?.name || item.serviceNameAtBooking || "Service",
-        price: Number(item.priceAtBooking || item.price || 0)
-      })) || [];
-
-      setBooking({
-        id: activeBooking.id,
-        status: activeBooking.status,
-        paymentStatus: activeBooking.paymentStatus,
-        appointmentStart: activeBooking.appointmentStart,
-        services: services,
-        notes: activeBooking.notes || "",
-        totalAmount: Number(activeBooking.totalAmount || 0),
-        amountPaid: Number(activeBooking.amountPaid || 0),
-        customer: activeBooking.customer,
-        payments: activeBooking.payments || [],
-        vehicleType: activeBooking.vehicleType || "",
-        plateNumber: activeBooking.plateNumber || "",
-        contactNumber: activeBooking.contactNumber || "",
-        email: activeBooking.email || "",
-        paymentMethod: activeBooking.paymentMethod || "CASH"
-      });
-    } else {
-      // No active booking
-      setBooking({
-        id: null,
-        status: "",
-        paymentStatus: "",
-        appointmentStart: null,
-        services: [],
-        notes: "",
-        totalAmount: 0,
-        amountPaid: 0,
-        customer: null,
-        payments: [],
-        vehicleType: "",
-        plateNumber: "",
-        contactNumber: "",
-        email: "",
-        paymentMethod: "CASH"
-      });
-    }
-
-    const completedBookings = bookings
-      .filter(b => b.status === "COMPLETED")
-      .slice(0,2);
-
-    setHistory(completedBookings);
-
-  } catch {
-    // handled globally by axios
-  } finally {
-    setLoading(false);
-  }
-
-};
+    };
 
     loadBooking();
-
-    // Refresh data every 10 seconds to catch payment updates
     const interval = setInterval(loadBooking, 10000);
     return () => clearInterval(interval);
+  }, [token]);
 
-  },[token]);
+  useEffect(() => {
+    if (!token) return;
 
-  useEffect(()=>{
+    const loadNotifications = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/notifications", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        setNotifications(data.notifications || []);
+      } catch (err) {
+        console.log("Notification fetch error:", err);
+      }
+    };
 
-  if (!token) return;
+    loadNotifications();
+  }, [token]);
 
-  const loadNotifications = async () => {
-
-    try{
-
-      const res = await fetch(
-        "http://localhost:5000/api/notifications",
-        {
-          headers:{
-            Authorization:`Bearer ${token}`
-          }
-        }
-      );
-
-      const data = await res.json();
-      setNotifications(data.notifications || []);
-
-    }catch(err){
-      console.log("Notification fetch error:",err);
-    }
-
-  };
-
-  loadNotifications();
-
-},[token]);
-
-  const total = booking.services.reduce((sum,s)=>sum + (s.price || 0),0);
+  const total = booking.services.reduce((sum, s) => sum + (s.price || 0), 0);
   const balance = total - booking.amountPaid;
 
-
   const cancelBooking = async () => {
+    if (!booking.id) return;
 
-  if (!booking.id) return;
-
-  const confirmed = await confirmAction({
-    title: "Cancel Booking",
-    message: "Are you sure you want to cancel this booking?",
-    confirmText: "Yes, Cancel",
-    cancelText: "Keep Booking",
-    type: "danger"
-  });
-
-  if (!confirmed) return;
-
-  try {
-
-    const res = await fetch(
-      `http://localhost:5000/api/bookings/request-cancel/${booking.id}`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    );
-
-    // 🔥 HANDLE ERROR FIRST (NO JSON PARSE YET)
-    if (!res.ok) {
-// handled globally
-      return;
-    }
-
-    // 🔥 ONLY PARSE IF SUCCESS
-    await res.json();
-
-    toast.success("Booking cancelled");
-
-    // Immediately clear the booking from UI
-    setBooking({
-      id: null,
-      status: "",
-      paymentStatus: "",
-      appointmentStart: null,
-      services: [],
-      notes: "",
-      totalAmount: 0,
-      amountPaid: 0,
-      customer: null,
-      payments: [],
-      vehicleType: "",
-      plateNumber: "",
-      contactNumber: "",
-      email: "",
-      paymentMethod: "CASH"
+    const confirmed = await confirmAction({
+      title: "Cancel Booking",
+      message: "Are you sure you want to cancel this booking?",
+      confirmText: "Yes, Cancel",
+      cancelText: "Keep Booking",
+      type: "danger"
     });
 
-  } catch (err) {
+    if (!confirmed) return;
 
-    console.error("Cancel failed", err);
-    toast.error("Cancel failed");
+    try {
+      const res = await fetch(`http://localhost:5000/api/bookings/request-cancel/${booking.id}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ reason: "Requested by customer from dashboard" })
+      });
 
-  }
+      if (!res.ok) return;
+      await res.json();
+      toast.success("Booking cancelled");
+      setBooking({
+        id: null,
+        status: "",
+        paymentStatus: "",
+        appointmentStart: null,
+        services: [],
+        notes: "",
+        totalAmount: 0,
+        amountPaid: 0,
+        customer: null,
+        payments: [],
+        vehicleType: "",
+        plateNumber: "",
+        contactNumber: "",
+        email: "",
+        paymentMethod: "CASH"
+      });
+    } catch (err) {
+      console.error("Cancel failed", err);
+      toast.error("Cancel failed");
+    }
+  };
 
-};
   const isCancelled = booking.status === "CANCELLED";
 
-return (
+  return (
+    <CustomerLayout active="dashboard">
+      <div className="dashboard-main" style={{ width: "100%" }}>
+        <h1 style={{ marginBottom: "24px", fontWeight: "800", color: "var(--text-primary)" }}>
+          WELCOME BACK!
+        </h1>
 
-  <CustomerLayout active="dashboard">
+        {loading && <p style={{ color: "var(--text-secondary)" }}>Loading your booking...</p>}
 
-    <div
-      className="dashboard-main"
-      style={{
-        width: "100%",
-      }}
-    >
-
-      <h1 style={{marginBottom:"20px"}}>WELCOME BACK!</h1>
-
-      {loading && <p>Loading your booking...</p>}
-
-      <div className="dashboard-grid">
-
-        {/* MAIN CARD */}
-
-        <div className="card">
-
-          <h3>Your Booking Details</h3>
-
-          {isCancelled || !booking.id ? (
-
-            <div style={{marginTop:"20px"}}>
-              <p style={{fontWeight:"600", marginBottom:"6px"}}>
-                Currently no active booking.
-              </p>
-              <p style={{marginTop:"10px"}}>Book a service to get started.</p>
+        <div className="dashboard-grid">
+          {/* MAIN CARD */}
+          <div className="card" style={{ padding: "30px", borderRadius: "18px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <FileText size={20} color="var(--accent-blue)" />
+                Booking Details
+              </h3>
+              {booking.id && (
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <BookingStatusBadge status={booking.status} />
+                  <PaymentStatusBadge status={booking.paymentStatus} />
+                </div>
+              )}
             </div>
 
-          ) : (
-
-            <>
-
-              {/* STATUS SECTION */}
-
-              <div style={{display:"flex",gap:"40px",marginTop:"28px"}}>
-
-                <div style={{flex:1}}>
-                  <p style={{fontSize:"12px",opacity:"0.7"}}>Booking Status</p>
-                  <p style={{fontWeight:"600",marginTop:"4px"}}>
-                    {booking.status}
-                  </p>
+            {isCancelled || !booking.id ? (
+              <div style={{ marginTop: "40px", textAlign: "center", padding: "40px 20px" }}>
+                <div style={{ 
+                  width: "60px", height: "60px", background: "var(--bg-tertiary)", 
+                  borderRadius: "50%", display: "flex", alignItems: "center", 
+                  justifyContent: "center", margin: "0 auto 20px" 
+                }}>
+                  <Calendar size={30} color="var(--text-secondary)" />
                 </div>
-
-                <div style={{flex:1}}>
-                  <p style={{fontSize:"12px",opacity:"0.7"}}>Payment Status</p>
-                  <p style={{fontWeight:"600",marginTop:"4px"}}>
-                    {booking.paymentStatus}
-                  </p>
-                </div>
-
+                <p style={{ fontWeight: "600", fontSize: "18px", color: "var(--text-primary)" }}>
+                  No active booking found
+                </p>
+                <p style={{ color: "var(--text-secondary)", marginTop: "8px" }}>
+                  Book a service to get your car detailed.
+                </p>
+                <button 
+                  onClick={() => navigate("/customer/book")}
+                  style={{
+                    marginTop: "24px", padding: "12px 24px", borderRadius: "10px",
+                    border: "none", background: "var(--accent-blue)", color: "white",
+                    fontWeight: "600", cursor: "pointer", display: "inline-flex",
+                    alignItems: "center", gap: "8px"
+                  }}
+                >
+                  <PlusCircle size={18} />
+                  Book Now
+                </button>
               </div>
-
-              <hr style={{margin:"20px 0"}} />
-
-              <div style={{display:"flex",gap:"30px"}}>
-
-                {/* LEFT SIDE */}
-
-                <div style={{flex:2, display:"flex", flexDirection:"column"}}>
-
-                  {/* APPOINTMENT */}
-
+            ) : (
+              <>
+                <div style={{ 
+                  marginTop: "30px", display: "grid", 
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "20px" 
+                }}>
                   <div className="section-lg">
-                    <p style={{fontWeight:"600", marginBottom:"6px"}}>Appointment Details</p>
-
-                    {booking.appointmentStart && (
-                      <p style={{marginTop:"6px"}}>
-                        {new Date(booking.appointmentStart).toLocaleString()}
-                      </p>
-                    )}
-
-                    <ul style={{marginTop:"18px",paddingLeft:"18px"}}>
-                      {booking.services.map((service,i)=>(
-                        <li key={i}>{service.name}</li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  {/* CUSTOMER DETAILS */}
-
-                  <div className="section-lg">
-                    <p style={{fontWeight:"600", marginBottom:"6px"}}>Customer Details</p>
-
-                    <div style={{
-                      marginTop:"10px",
-                      display:"grid",
-                      gap:"6px"
-                    }}>
-
-                      <div>
-                        <span style={{opacity:"0.6"}}>Name: </span>
-                        <strong>{booking.customer?.fullName || "N/A"}</strong>
-                      </div>
-
-                      <div>
-                        <span style={{opacity:"0.6"}}>Contact: </span>
-                        <strong>{booking.contactNumber || "N/A"}</strong>
-                      </div>
-
-                      <div>
-                        <span style={{opacity:"0.6"}}>Email: </span>
-                        <strong>{booking.email || booking.customer?.email || "N/A"}</strong>
-                      </div>
-
-                      <div>
-                        <span style={{opacity:"0.6"}}>Vehicle: </span>
-                        <strong>{booking.vehicleType || "N/A"}</strong>
-                      </div>
-
-                      <div>
-                        <span style={{opacity:"0.6"}}>Plate: </span>
-                        <strong>{booking.plateNumber || "N/A"}</strong>
-                      </div>
-
-                      <div>
-                        <span style={{opacity:"0.6"}}>Payment Method: </span>
-                        <strong>{booking.paymentMethod === "GCASH" ? "GCash" : "Cash"}</strong>
-                      </div>
-
-                    </div>
-                  </div>
-
-                  {/* NOTES */}
-
-                  <div className="section-lg">
-                    <p style={{fontWeight:"600", marginBottom:"6px", color: "var(--text-primary)"}}>Notes</p>
-
-                    <div style={{
-                      marginTop:"10px",
-                      padding:"14px",
-                      borderRadius:"10px",
-                      background:"var(--bg-primary)",
-                      lineHeight:"1.5",
-                      maxWidth:"95%" // ✅ prevents full stretch
-                    }}>
-                      {booking.notes || "No notes provided."}
-                    </div>
-                  </div>
-
-                  {/* CANCEL BUTTON */}
-
-<button
-  onClick={cancelBooking}
-  disabled={!canCancel(booking.status)}
-  style={{
-    padding: "10px 16px",
-    borderRadius: "8px",
-    border: "none",
-    background: canCancel(booking.status) ? "var(--accent-red)" : "var(--bg-tertiary)",
-    color: "#fff",
-    cursor: canCancel(booking.status) ? "pointer" : "not-allowed",
-    opacity: canCancel(booking.status) ? 1 : 0.6
-  }}
->
-  Cancel Booking
-</button>
-
-                </div>
-
-                {/* RIGHT SIDE (TOTALS) */}
-
-              <div style={{
-                flex:1,
-                borderLeft:"1px solid rgba(255,255,255,0.06)",
-                paddingLeft:"20px",
-                paddingTop:"10px" // ✅ aligns with left content
-              }}>
-
-                <p style={{fontWeight:"600", marginBottom:"6px"}}>Services & Amount</p>
-
-                  {booking.services.map((service,i)=>(
-                    <div key={i} style={{
-                      display:"flex",
-                      justifyContent:"space-between",
-                      marginTop:"8px"
-                    }}>
-                      <span>{service.name}</span>
-                      <span>₱{service.price.toLocaleString()}</span>
-                    </div>
-                  ))}
-
-                  <hr style={{margin:"12px 0"}} />
-
-                  <div style={{
-                    display:"flex",
-                    justifyContent:"space-between",
-                    fontWeight:"bold",
-                    fontSize:"16px",
-                    color: "var(--text-primary)"
-                  }}>
-                    <span>Total</span>
-                    <span>₱{booking.totalAmount.toLocaleString()}</span>
-                  </div>
-
-                  <div style={{
-                    display:"flex",
-                    justifyContent:"space-between",
-                    marginTop:"6px",
-                    color:"var(--accent-green)"
-                  }}>
-                    <span style={{fontSize:"13px"}}>Amount Paid</span>
-                    <span style={{fontSize:"13px"}}>₱{booking.amountPaid.toLocaleString()}</span>
-                  </div>
-
-                  <div style={{
-                    display:"flex",
-                    justifyContent:"space-between",
-                    marginTop:"4px",
-                    color:"var(--accent-red)"
-                  }}>
-                    <span style={{fontSize:"13px"}}>Balance</span>
-                    <span style={{fontSize:"13px"}}>₱{balance.toLocaleString()}</span>
-                  </div>
-
-                  {booking.payments && booking.payments.length > 0 && (
-                    <>
-                      <hr style={{margin:"16px 0 12px 0"}} />
-                      <p style={{fontWeight:"600", marginBottom:"8px", fontSize:"13px"}}>Payment History</p>
-                      {booking.payments.map((payment, i) => (
-                        <div key={i} style={{
-                          display:"flex",
-                          justifyContent:"space-between",
-                          marginTop:"6px",
-                          fontSize:"12px",
-                          opacity:0.8
-                        }}>
-                          <span>
-                            {payment.method === "GCASH" ? "GCash" : "Cash"} - {new Date(payment.createdAt).toLocaleDateString()}
-                          </span>
-                          <span>₱{Number(payment.amount).toLocaleString()}</span>
+                    <p style={{ fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Calendar size={16} color="var(--accent-blue)" />
+                      Appointment
+                    </p>
+                    <p style={{ fontSize: "15px", color: "var(--text-primary)" }}>
+                      {new Date(booking.appointmentStart).toLocaleDateString(undefined, { 
+                        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+                      })}
+                    </p>
+                    <p style={{ fontSize: "14px", color: "var(--accent-blue)", marginTop: "4px", fontWeight: "600" }}>
+                      {new Date(booking.appointmentStart).toLocaleTimeString(undefined, {
+                        hour: '2-digit', minute: '2-digit'
+                      })}
+                    </p>
+                    
+                    <div style={{ marginTop: "16px", padding: "12px", background: "var(--bg-tertiary)", borderRadius: "10px" }}>
+                      {booking.services.map((service, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: i < booking.services.length - 1 ? "6px" : 0 }}>
+                          <div style={{ width: "6px", height: "6px", background: "var(--accent-blue)", borderRadius: "50%" }} />
+                          <span style={{ fontSize: "13px" }}>{service.name}</span>
                         </div>
                       ))}
-                    </>
-                  )}
+                    </div>
+                  </div>
 
+                  <div className="section-lg">
+                    <p style={{ fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <Car size={16} color="var(--accent-blue)" />
+                      Vehicle & Contact
+                    </p>
+                    <div style={{ display: "grid", gap: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <User size={14} color="var(--text-secondary)" />
+                        <span style={{ fontSize: "14px" }}>{booking.customer?.fullName}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <Phone size={14} color="var(--text-secondary)" />
+                        <span style={{ fontSize: "14px" }}>{booking.contactNumber || "N/A"}</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <Car size={14} color="var(--text-secondary)" />
+                        <span style={{ fontSize: "14px" }}>{booking.vehicleType} ({booking.plateNumber || "No Plate"})</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <CreditCard size={14} color="var(--text-secondary)" />
+                        <span style={{ fontSize: "14px" }}>{booking.paymentMethod === "GCASH" ? "GCash" : "Cash"}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
+                <div style={{ marginTop: "24px" }}>
+                  <p style={{ fontWeight: "700", marginBottom: "8px", color: "var(--text-primary)" }}>Notes</p>
+                  <div style={{ 
+                    padding: "16px", borderRadius: "12px", background: "var(--bg-tertiary)", 
+                    fontSize: "14px", color: "var(--text-secondary)", fontStyle: booking.notes ? "normal" : "italic" 
+                  }}>
+                    {booking.notes || "No extra notes for this booking."}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "30px", padding: "20px", background: "var(--bg-tertiary)", borderRadius: "14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
+                    <span style={{ fontWeight: "600" }}>Total Amount</span>
+                    <span style={{ fontWeight: "800", fontSize: "18px", color: "var(--accent-blue)" }}>₱{booking.totalAmount.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", marginBottom: "6px" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>Amount Paid</span>
+                    <span style={{ color: "var(--accent-green)", fontWeight: "600" }}>₱{booking.amountPaid.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px" }}>
+                    <span style={{ color: "var(--text-secondary)" }}>Remaining Balance</span>
+                    <span style={{ color: "var(--accent-red)", fontWeight: "600" }}>₱{balance.toLocaleString()}</span>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "24px", display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    onClick={cancelBooking}
+                    disabled={!canCancel(booking.status)}
+                    style={{
+                      padding: "10px 20px", borderRadius: "10px", border: "none",
+                      background: canCancel(booking.status) ? "rgba(239, 68, 68, 0.1)" : "var(--bg-tertiary)",
+                      color: canCancel(booking.status) ? "var(--accent-red)" : "var(--text-secondary)",
+                      cursor: canCancel(booking.status) ? "pointer" : "not-allowed",
+                      fontWeight: "600", transition: "0.2s"
+                    }}
+                  >
+                    Request Cancellation
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* RIGHT PANEL */}
+          <div className="right-stack" style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div className="card" style={{ padding: "24px", borderRadius: "18px" }}>
+              <h3 style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}>
+                <History size={18} color="var(--accent-blue)" />
+                Recent History
+              </h3>
+
+              {history.length === 0 ? (
+                <p style={{ fontSize: "14px", color: "var(--text-secondary)", textAlign: "center", padding: "20px 0" }}>
+                  No completed services yet.
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {history.map((h, i) => {
+                    const services = h.items?.map(item => item.service?.name || item.serviceNameAtBooking).join(", ");
+                    const totalAmt = Number(h.totalAmount || 0);
+                    return (
+                      <div key={i} style={{ padding: "12px", background: "var(--bg-tertiary)", borderRadius: "10px" }}>
+                        <div style={{ fontSize: "14px", fontWeight: "600", marginBottom: "4px" }}>{services}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "var(--text-secondary)" }}>
+                          <span>{new Date(h.appointmentStart).toLocaleDateString()}</span>
+                          <span style={{ fontWeight: "600", color: "var(--accent-blue)" }}>₱{totalAmt.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <button
+                style={{
+                  width: "100%", marginTop: "16px", padding: "10px", borderRadius: "10px",
+                  border: "1px solid var(--border-color)", background: "transparent",
+                  color: "var(--text-primary)", cursor: "pointer", fontSize: "13px",
+                  fontWeight: "600", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px"
+                }}
+                onClick={() => navigate("/customer/bookings")}
+              >
+                View All Bookings
+                <ArrowRight size={14} />
+              </button>
+            </div>
+
+            <div className="card" style={{ padding: "24px", borderRadius: "18px" }}>
+              <h3 style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}>
+                <Bell size={18} color="var(--accent-blue)" />
+                Notifications
+              </h3>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {notifications.length === 0 ? (
+                  <p style={{ fontSize: "14px", color: "var(--text-secondary)", textAlign: "center", padding: "20px 0" }}>
+                    No new notifications.
+                  </p>
+                ) : (
+                  notifications.slice(0, 3).map(n => (
+                    <div key={n.id} style={{ display: "flex", gap: "12px", alignItems: "flex-start" }}>
+                      <div style={{ marginTop: "4px" }}>
+                        <CheckCircle2 size={14} color="var(--accent-green)" />
+                      </div>
+                      <div style={{ fontSize: "13px", color: "var(--text-primary)", lineHeight: "1.4" }}>{n.title}</div>
+                    </div>
+                  ))
+                )}
               </div>
 
-            </>
-
-          )}
-
+              <button
+                style={{
+                  width: "100%", marginTop: "16px", padding: "10px", borderRadius: "10px",
+                  border: "1px solid var(--border-color)", background: "transparent",
+                  color: "var(--text-primary)", cursor: "pointer", fontSize: "13px",
+                  fontWeight: "600", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px"
+                }}
+                onClick={() => navigate("/customer/notifications")}
+              >
+                View Notifications
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* RIGHT PANEL */}
-
-        <div className="right-stack">
-
-          <div className="card">
-
-            <h3>Booking History</h3>
-
-            {history.length === 0 ? (
-              <p>No completed bookings yet.</p>
-            ) : (
-
-              history.map((h,i)=>{
-
-                const services =
-                  h.items?.map(item => item.service?.name || item.serviceNameAtBooking).join(", ");
-                const totalAmt = h.items?.reduce((sum, item) => sum + Number(item.priceAtBooking || 0), 0) || 0;
-
-                return(
-                  <div key={i} style={{marginTop:"14px"}}>
-                    <strong>{services}</strong>
-                    <p style={{fontSize:"12px",opacity:"0.6"}}>
-                      {h.appointmentStart ? new Date(h.appointmentStart).toLocaleDateString() : ""} - ₱{totalAmt.toLocaleString()}
-                    </p>
-                  </div>
-                );
-
-              })
-
-            )}
-
-            <button
-              style={{
-                marginTop:"12px",
-                padding:"8px 14px",
-                borderRadius:"8px",
-                border:"none",
-                background:"var(--bg-tertiary)",
-                color:"var(--text-primary)",
-                cursor:"pointer"
-              }}
-              onClick={()=>navigate("/customer/bookings")}
-            >
-              Show All
-            </button>
-
+        {/* CTA */}
+        <div className="cta-card" style={{ 
+          marginTop: "40px", padding: "40px", borderRadius: "20px", 
+          background: "linear-gradient(135deg, var(--accent-blue), #1e40af)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          color: "white"
+        }}>
+          <div style={{ maxWidth: "60%" }}>
+            <h2 style={{ fontSize: "24px", fontWeight: "800", marginBottom: "10px", color: "white" }}>
+              READY FOR YOUR NEXT SERVICE?
+            </h2>
+            <p style={{ opacity: 0.9, lineHeight: "1.6" }}>
+              Keep your vehicle in showroom condition with our premium detailing packages. 
+              Schedule your next appointment today!
+            </p>
           </div>
 
-          <div className="card">
-
-            <h3>Notifications</h3>
-
-          <div style={{marginTop:"10px"}}>
-
-            {notifications.length === 0 ? (
-              <p>No notifications yet.</p>
-            ) : (
-              notifications.slice(0,2).map(n => (
-                <p key={n.id}>
-                  ✔ {n.title}
-                </p>
-              ))
-            )}
-
-          </div>
-
-            <button
-              style={{
-                marginTop:"12px",
-                padding:"8px 14px",
-                borderRadius:"8px",
-                border:"none",
-                background:"var(--bg-tertiary)",
-                color:"var(--text-primary)",
-                cursor:"pointer"
-              }}
-              onClick={()=>navigate("/customer/notifications")}
-            >
-              Show All
-            </button>
-
-          </div>
-
+          <button 
+            onClick={() => navigate("/customer/book")}
+            style={{
+              padding: "16px 32px", borderRadius: "12px", border: "none",
+              background: "white", color: "var(--accent-blue)", fontWeight: "700",
+              cursor: "pointer", fontSize: "16px", boxShadow: "0 10px 20px rgba(0,0,0,0.1)",
+              transition: "0.2s"
+            }}
+          >
+            Book Now
+          </button>
         </div>
-
       </div>
-
-      {/* CTA */}
-
-      <div className="cta-card" style={{marginTop:"40px"}}>
-
-        <div>
-          <h2 style={{ color: "var(--text-primary)" }}>READY FOR YOUR NEXT SERVICE?</h2>
-          <p>
-            Book an appointment now and keep your vehicle in pristine condition.
-          </p>
-        </div>
-
-        <button onClick={()=>navigate("/customer/book")}>
-          Book Now
-        </button>
-
-      </div>
-
-    </div>
-
-  </CustomerLayout>
-
-);
+    </CustomerLayout>
+  );
 }
 
 export default CustomerDashboard;

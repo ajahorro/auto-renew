@@ -29,7 +29,8 @@ CONTROLLERS
 
 const authController = require("./controllers/auth.controller");
 const bookingsController = require("./controllers/bookings.controller");
-const { user } = require("./config/prisma");
+const paymentsRoutes = require("./routes/payments.routes");
+
 
 /* ===============================
 ROUTER INIT
@@ -144,21 +145,6 @@ router.get(
 
 /* =========================================================
 MODULE ROUTES (BUSINESS LOGIC MODULES)
-========================================================= */
-
-router.use("/services", servicesRoutes);
-
-router.use("/bookings", bookingsRoutes);
-
-router.use("/notifications", notificationsRoutes);
-
-router.use("/settings", settingsRoutes);
-
-/* =========================================================
-ROLE DASHBOARDS
-========================================================= */
-
-router.get(
   "/admin-dashboard",
   authenticate,
   authorize("ADMIN","SUPER_ADMIN"),

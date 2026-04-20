@@ -11,9 +11,14 @@ const AdminPayments = () => {
 
   const fetchPayments = useCallback(async () => {
     try {
-      const endpoint = filter === "all" 
-        ? "/payments" 
-        : `/payments?status=${filter}`;
+      let endpoint;
+      if (filter === "pending") {
+        endpoint = "/payments/pending";
+      } else if (filter === "all") {
+        endpoint = "/payments?status=";
+      } else {
+        endpoint = `/payments?status=${filter}`;
+      }
       const res = await API.get(endpoint);
       setPayments(res.data.payments || []);
     } catch (err) {
@@ -229,7 +234,7 @@ const styles = {
   title: { fontSize: "28px", fontWeight: "700", marginBottom: "5px" },
   subtitle: { color: "var(--text-secondary)", fontSize: "14px" },
   filterTabs: { display: "flex", gap: "10px", marginBottom: "24px" },
-  filterTab: { padding: "10px 20px", border: "1px solid var(--border-color)", background: "transparent", color: "var(--text-secondary)", borderRadius: "10px", cursor: "pointer", fontWeight: "500", transition: "0.2s" },
+  filterTab: { padding: "10px 20px", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border-color)", background: "transparent", color: "var(--text-secondary)", borderRadius: "10px", cursor: "pointer", fontWeight: "500", transition: "0.2s" },
   filterTabActive: { background: "var(--accent-blue)", color: "#fff", borderColor: "var(--accent-blue)" },
   loadingState: { textAlign: "center", padding: "60px", color: "var(--text-secondary)", background: "var(--card-bg)", borderRadius: "16px" },
   emptyState: { textAlign: "center", padding: "60px", color: "var(--text-secondary)", background: "var(--card-bg)", borderRadius: "16px" },

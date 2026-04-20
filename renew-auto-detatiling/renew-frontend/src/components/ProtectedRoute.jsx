@@ -1,9 +1,8 @@
 import { Navigate } from "react-router-dom";
-import { useContext } from "react";
-import { AuthContext } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext";
 
 function ProtectedRoute({ children, allowedRoles }) {
-  const { user, loading } = useContext(AuthContext);
+  const { user, loading } = useAuth();
 
   if (loading) {
     return <div style={{ padding: "20px" }}>Loading...</div>;
