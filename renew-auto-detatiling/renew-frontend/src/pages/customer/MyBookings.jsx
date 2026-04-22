@@ -10,12 +10,13 @@ import PaymentStatusBadge from "../../components/PaymentStatusBadge";
 import { 
   CreditCard, 
   Wallet, 
-  Trash2, 
+  Flag, 
   ChevronRight, 
   Calendar, 
   Car, 
   Package 
 } from "lucide-react";
+import ServiceStatusBadge from "../../components/ServiceStatusBadge";
 
 const MyBookings = () => {
   const navigate = useNavigate();
@@ -75,12 +76,16 @@ const MyBookings = () => {
     setShowPaymentModal(true);
   };
 
-  const canCancel = (status) => {
-    return ["PENDING", "CONFIRMED"].includes(status);
+  const canCancel = (booking) => {
+    // Can request cancellation if SCHEDULED (or legacy PENDING/CONFIRMED)
+    // and no pending cancellation request already
+    const cancellableStatuses = ["SCHEDULED", "PENDING", "CONFIRMED"];
+    return cancellableStatuses.includes(booking.status) && booking.cancellationStatus !== "REQUESTED";
   };
 
   const needsPayment = (booking) => {
-    return booking.paymentStatus === "PENDING" && 
+    // Show payment options when payment is pending OR rejected (resubmission)
+    return ["PENDING", "REJECTED"].includes(booking.paymentStatus) &&
            Number(booking.totalAmount) > Number(booking.amountPaid || 0);
   };
 
@@ -116,6 +121,7 @@ const MyBookings = () => {
                   </div>
                   <div style={styles.statusGroup}>
                     <BookingStatusBadge status={booking.status} />
+                    <ServiceStatusBadge status={booking.serviceStatus} />
                     <PaymentStatusBadge status={booking.paymentStatus} />
                   </div>
                 </div>
@@ -167,18 +173,18 @@ const MyBookings = () => {
                     )}
                   </div>
                   <div style={styles.actionRight}>
-                    {canCancel(booking.status) && (
+                    {canCancel(booking) && (
                       <button 
                         style={styles.cancelBtn}
                         onClick={() => cancelBooking(booking.id)}
                       >
-                        <Trash2 size={14} />
-                        Cancel
+                        <Flag size={14} />
+                        Request to Cancel
                       </button>
                     )}
                     <button 
                       style={styles.viewBtn}
-                      onClick={() => navigate(`/customer/dashboard`)} // In this system, dashboard shows active booking
+                      onClick={() => navigate(`/customer/bookings/${booking.id}`)}
                     >
                       View Details
                       <ChevronRight size={14} />

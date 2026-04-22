@@ -13,10 +13,13 @@ const authorize = (...allowedRoles) => {
       const userRole = String(req.user.role || "").toUpperCase();
       const normalizedRoles = allowedRoles.map(role => String(role).toUpperCase());
 
+      console.log(`[RBAC] User: ${req.user.id}, Role: ${userRole}, Required: ${normalizedRoles.join(", ")}`);
+
       // 2. Logic: Let them in if they are a SUPER_ADMIN OR if their role is in the list
       const isAllowed = userRole === 'SUPER_ADMIN' || normalizedRoles.includes(userRole);
 
       if (!isAllowed) {
+        console.warn(`[RBAC] Access Denied for User ${req.user.id}. Role ${userRole} not in ${normalizedRoles}`);
         return res.status(403).json({
           success: false,
           message: `Forbidden: You do not have the required permissions (${normalizedRoles.join(", ")})`

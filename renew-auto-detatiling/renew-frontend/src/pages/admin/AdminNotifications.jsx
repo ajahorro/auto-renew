@@ -60,8 +60,18 @@ const AdminNotifications = () => {
   const handleNotificationClick = (n) => {
     if (!n.isRead) markRead(n.id);
     
-    // Navigate based on notification type and content
-    if (n.type === "BOOKING" || n.type === "PAYMENT" || n.title?.toLowerCase().includes("booking") || n.title?.toLowerCase().includes("payment")) {
+    // Deep linking: If there's a targetId (like bookingId), go directly to it
+    const bookingId = n.targetId || n.relatedId;
+    
+    if (bookingId && (
+      n.type === "BOOKING" || 
+      n.type === "CANCELLATION" || 
+      n.type === "PAYMENT" || 
+      n.title?.toLowerCase().includes("booking") || 
+      n.title?.toLowerCase().includes("cancellation")
+    )) {
+      navigate(`/admin/bookings/${bookingId}`);
+    } else if (n.type === "BOOKING" || n.type === "PAYMENT" || n.title?.toLowerCase().includes("booking") || n.title?.toLowerCase().includes("payment")) {
       navigate("/admin/bookings");
     } else if (n.title?.toLowerCase().includes("schedule")) {
       navigate("/admin/schedule");
@@ -75,6 +85,7 @@ const AdminNotifications = () => {
       case "BOOKING": return "📅";
       case "PAYMENT": return "💰";
       case "STAFF": return "👤";
+      case "CANCELLATION": return "⚠️";
       default: return "🔔";
     }
   };
@@ -84,6 +95,7 @@ const AdminNotifications = () => {
       case "BOOKING": return "#3b82f6";
       case "PAYMENT": return "#22c55e";
       case "STAFF": return "#f59e0b";
+      case "CANCELLATION": return "#ef4444";
       default: return "#94a3b8";
     }
   };

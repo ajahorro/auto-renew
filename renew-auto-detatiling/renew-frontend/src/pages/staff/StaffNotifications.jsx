@@ -39,13 +39,11 @@ const StaffNotifications = () => {
 
   const markAllRead = async () => {
     try {
-      for (const n of notifications.filter(n => !n.isRead)) {
-        await API.patch(`/notifications/${n.id}/read`);
-      }
+      await API.patch("/notifications/read-all");
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
       window.dispatchEvent(new Event("notifUpdated"));
     } catch (err) {
-      console.log(err);
+      console.log("Mark all read error:", err);
     }
   };
 

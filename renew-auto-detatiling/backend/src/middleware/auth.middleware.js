@@ -63,7 +63,19 @@ const authenticate = async (req, res, next) => {
     next();
 
   } catch (error) {
-    console.error("AUTH ERROR:", error.message);
+    console.error("AUTH ERROR:", error);
+    
+    // Check if it's a database connection error (Prisma P2024 or similar)
+    const isDbError = error.code?.startsWith('P2') || error.message?.includes('connection') || error.message?.includes('timeout');
+    
+    if (isDbError) {
+      return res.status(503).json({
+        success: false,
+        message: "Database busy, please try again in a moment.",
+        isRetryable: true
+      });
+    }
+
     return res.status(401).json({
       success: false,
       message: "Session expired or invalid.",

@@ -13,6 +13,7 @@ const {
   requestCustomerCancel,
   assignStaff,
   updateBookingStatus,
+  updateServiceStatus,
   recordPayment,
   requestDownpayment,
   addServiceToBooking,
@@ -26,81 +27,89 @@ const {
   getAdminAnalytics,
   updateBooking,
   confirmDownpayment,
-  requestCancelBooking
+  requestCancelBooking,
+  processCancellationRequest
 } = require("../controllers/bookings.controller");
 
-/* GET ADMIN BOOKINGS */
+/* ================= GET ROUTES (ADMIN & UTILITY) ================= */
 
-router.get(
-  "/admin",
-  authenticate,
-  authorize("ADMIN", "SUPER_ADMIN"),
-  getAdminBookings
-);
-
-/* CREATE BOOKING */
-router.post("/", authenticate, createBooking);
-
-/* AVAILABILITY - must be before /:id */
+// Group specific static-like routes at the top to avoid parameter collisions
+router.get("/admin", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAdminBookings);
+router.get("/admin-analytics", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAdminAnalytics);
+router.get("/schedule", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getDailySchedule);
 router.get("/availability", getAvailability);
+router.get("/addons", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), getAddonRequests);
 
+/* PER-BOOKING AUDIT LOGS - Must be before /:id */
+router.get("/:id/audit-logs", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+  const prisma = require("../config/prisma");
+  try {
+    const bookingId = parseInt(req.params.id, 10);
+    if (isNaN(bookingId)) {
+      return res.status(400).json({ success: false, message: "Invalid booking ID" });
+    }
 
+    const logs = await prisma.auditLog.findMany({
+      where: { bookingId },
+      include: {
+        performer: {
+          select: { id: true, fullName: true, role: true }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100
+    });
 
-/* GET BOOKINGS */
+    res.json({ success: true, logs });
+  } catch (error) {
+    console.error("GET AUDIT LOGS ERROR:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/* GET BOOKINGS (CUSTOMER/DEFAULT) */
 router.get("/", authenticate, getBookings);
 
-/* ADMIN ANALYTICS */
-router.get("/admin-analytics", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAdminAnalytics);
+/* ================= POST / PATCH ROUTES (MUTATIONS) ================= */
 
-/* ADMIN DAILY SCHEDULE */
-router.get("/schedule", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getDailySchedule);
+// Create new booking
+router.post("/", authenticate, createBooking);
 
-/* UPDATE BOOKING (CUSTOMER) - must be before /:id catch-all */
-router.patch("/update/:id", authenticate, authorize("CUSTOMER"), updateBooking);
-router.patch("/:id", authenticate, authorize("CUSTOMER"), updateBooking);
+// Update booking (General)
+router.patch("/:id", authenticate, updateBooking);
+router.patch("/update/:id", authenticate, updateBooking); // Alias
 
-/* ADD PAYMENT */
-router.post("/add-payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addPayment);
+// Status updates
+router.patch("/:id/status", authenticate, updateBookingStatus);
+router.patch("/status/:id", authenticate, updateBookingStatus); // Alias
+
+// Payment operations
+router.patch("/:id/payment", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), recordPayment);
+router.patch("/payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), recordPayment); // Alias
+router.post("/:id/add-payment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addPayment);
+router.post("/:id/request-downpayment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), requestDownpayment);
 router.post("/:id/confirm-downpayment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), confirmDownpayment);
 
-/* REQUEST DOWNPAYMENT */
-router.post("/request-downpayment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), requestDownpayment);
-router.post("/:id/request-downpayment", authenticate, authorize("ADMIN", "SUPER_ADMIN"), requestDownpayment);
-
-/* ADD SERVICE TO BOOKING */
-router.post("/add-service/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addServiceToBooking);
-router.post("/:id/add-service", authenticate, authorize("ADMIN", "SUPER_ADMIN"), addServiceToBooking);
-
-/* ASSIGN STAFF */
+// Staff & Service management
 router.patch("/assign/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
-router.patch("/:id/assign", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
+router.post("/:id/assign-staff", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
+router.post("/:id/service-status", authenticate, updateServiceStatus);
 
-/* UPDATE STATUS - CUSTOMER, STAFF, ADMIN all allowed (controller enforces) */
-router.patch("/status/:id", authenticate, updateBookingStatus);
-router.patch("/:id/status", authenticate, updateBookingStatus);
-
-/* RECORD PAYMENT */
-router.patch("/payment/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), recordPayment);
-router.patch("/:id/payment", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), recordPayment);
-
-/* CANCEL BOOKING */
+// Cancellation flows
 router.patch("/cancel/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), cancelBooking);
+router.post("/:id/cancel-request", authenticate, authorize("CUSTOMER"), requestCustomerCancel);
+router.patch("/:id/cancel-request", authenticate, authorize("ADMIN", "SUPER_ADMIN"), processCancellationRequest);
+router.post("/:id/request-cancel", authenticate, authorize("ADMIN", "SUPER_ADMIN"), requestCancelBooking);
+router.patch("/:id/cancel", authenticate, authorize("ADMIN", "SUPER_ADMIN"), cancelBooking); // Direct admin cancel
 
-/* CUSTOMER REQUEST CANCEL */
-router.patch("/request-cancel/:id", authenticate, authorize("CUSTOMER"), requestCustomerCancel);
+// Addon requests
+router.post("/:id/addon", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF", "CUSTOMER"), createAddonRequest);
+router.patch("/addon/:requestId/approve", authenticate, authorize("ADMIN", "SUPER_ADMIN"), approveAddonRequest);
+router.patch("/addon/:requestId/reject", authenticate, authorize("ADMIN", "SUPER_ADMIN"), rejectAddonRequest);
 
-/* STAFF REQUEST CANCEL */
-router.post("/:id/request-cancel", authenticate, authorize("STAFF"), requestCancelBooking);
+/* ================= CATCH-ALL ROUTES ================= */
 
-/* ================= ADDON REQUESTS ================= */
-
-router.post("/:bookingId/addon-request", authenticate, authorize("CUSTOMER"), createAddonRequest);
-router.get("/:bookingId/addon-requests", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAddonRequests);
-router.patch("/addon-requests/:id/approve", authenticate, authorize("ADMIN", "SUPER_ADMIN"), approveAddonRequest);
-router.patch("/addon-requests/:id/reject", authenticate, authorize("ADMIN", "SUPER_ADMIN"), rejectAddonRequest);
-
-/* ================= GET BOOKING BY ID - MUST BE LAST ================= */
-
+// Get single booking by ID (Must be last GET)
 router.get("/:id", authenticate, getBookingById);
 
 module.exports = router;

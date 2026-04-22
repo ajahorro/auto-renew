@@ -21,6 +21,7 @@ const businessSettingsRoutes = require("./routes/businessSettings.routes");
 const cancellationsRoutes = require("./routes/cancellations.routes");
 const communicationsRoutes = require("./routes/communications.routes");
 const refundsRoutes = require("./routes/refunds.routes");
+const auditRoutes = require("./routes/audit.routes");
 const authController = require("./controllers/auth.controller");
 
 // Middleware
@@ -31,17 +32,25 @@ const app = express();
 
 /*  MIDDLEWARE*/
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: ["http://localhost:5173", "http://localhost:5174"],
   methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 app.use(express.json());
+app.use((req, res, next) => {
+  console.log(`[DEBUG] ${req.method} ${req.url}`);
+  next();
+});
 app.use(rateLimiter);
 
 /*  HEALTH CHECK */
 app.get("/", (req, res) => {
   res.json({ message: "RENEW Auto Detailing API running" });
+});
+
+app.get("/api/health-check", (req, res) => {
+  res.json({ success: true, status: "OK", timestamp: new Date() });
 });
 
 /* AUTH ROUTES (PUBLIC)*/
@@ -55,6 +64,36 @@ app.post("/api/auth/reset-password", authController.resetPassword);
 /* AUTH ROUTES (PROTECTED) */
 app.post("/api/auth/send-email-otp", authenticate, authController.sendEmailOtp);
 app.post("/api/auth/verify-email-otp", authenticate, authController.verifyEmailOtp);
+
+app.get("/api/audit-logs", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+  try {
+    const { entityType, action, userId, bookingId } = req.query;
+    const where = {};
+    if (entityType) where.entityType = entityType;
+    if (action) where.action = action;
+    if (userId) where.userId = userId;
+    if (bookingId) where.bookingId = Number(bookingId);
+
+    const logs = await prisma.auditLog.findMany({
+      where,
+      include: {
+        performer: {
+          select: { id: true, fullName: true, role: true }
+        },
+        booking: {
+          select: { id: true, customerId: true }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+
+    res.json({ success: true, logs });
+  } catch (error) {
+    console.error("GET AUDIT LOGS ERROR:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
 
 /* MAIN ROUTES*/
 app.use("/api/services", servicesRoutes);

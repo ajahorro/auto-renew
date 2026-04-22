@@ -16,6 +16,7 @@ import AdminServices from "./pages/admin/AdminServices";
 import AdminNotifications from "./pages/admin/AdminNotifications";
 import AdminPayments from "./pages/admin/AdminPayments";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
+import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
 
 /* ================= STAFF ================= */
 import StaffDashboard from "./pages/staff/StaffDashboard";
@@ -27,6 +28,7 @@ import StaffTasks from "./pages/staff/StaffTasks";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
 import BookAppointment from "./pages/customer/BookAppointment";
 import MyBookings from "./pages/customer/MyBookings";
+import CustomerBookingView from "./pages/customer/CustomerBookingView";
 import Notifications from "./pages/customer/Notifications";
 import CustomerSettings from "./pages/customer/CustomerSettings";
 
@@ -152,6 +154,14 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/admin/audit"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}>
+              <AdminAuditLogs />
+            </ProtectedRoute>
+          }
+        />
 
         <Route
           path="/admin/settings"
@@ -225,6 +235,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["CUSTOMER"]}>
               <MyBookings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customer/bookings/:id"
+          element={
+            <ProtectedRoute allowedRoles={["CUSTOMER"]}>
+              <CustomerBookingView />
             </ProtectedRoute>
           }
         />

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import CustomerSidebar from "../../components/CustomerSideBar";
 import API from "../../api/axios";
 
 const Notifications = () => {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,11 +35,36 @@ const Notifications = () => {
     }
   };
 
+  const handleNotificationClick = (n) => {
+    if (!n.isRead) markRead(n.id);
+    
+    const bookingId = n.targetId || n.relatedId;
+    if (bookingId) {
+      navigate(`/customer/bookings/${bookingId}`);
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await API.patch("/notifications/read-all");
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
   return (
     <div style={styles.page}>
       <CustomerSidebar active="notifications" />
       <div style={styles.main}>
-        <h1 style={styles.title}>Notifications</h1>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Notifications</h1>
+          {notifications.some(n => !n.isRead) && (
+            <button style={styles.markAllBtn} onClick={markAllRead}>
+              Mark all as read
+            </button>
+          )}
+        </div>
         {loading && <p style={{ color: "var(--text-secondary)" }}>Loading notifications...</p>}
         {!loading && notifications.length === 0 && (
           <p style={{ color: "var(--text-secondary)" }}>No notifications yet.</p>
@@ -51,7 +77,7 @@ const Notifications = () => {
                 ...styles.card,
                 background: n.isRead ? "var(--bg-secondary)" : "var(--bg-tertiary)"
               }}
-              onClick={() => markRead(n.id)}
+              onClick={() => handleNotificationClick(n)}
             >
               <div style={styles.row}>
                 <strong style={{ color: "var(--text-primary)" }}>{n.title || "Notification"}</strong>
@@ -87,8 +113,27 @@ const styles = {
   },
 
   title:{
-    marginBottom:"30px",
+    marginBottom:0,
     color:"var(--text-primary)"
+  },
+
+  header:{
+    display:"flex",
+    justifyContent:"space-between",
+    alignItems:"center",
+    marginBottom:"30px"
+  },
+
+  markAllBtn:{
+    background:"transparent",
+    border:"1px solid var(--accent-blue)",
+    color:"var(--accent-blue)",
+    padding:"8px 16px",
+    borderRadius:"8px",
+    cursor:"pointer",
+    fontSize:"13px",
+    fontWeight:"600",
+    transition:"0.2s"
   },
 
   list:{

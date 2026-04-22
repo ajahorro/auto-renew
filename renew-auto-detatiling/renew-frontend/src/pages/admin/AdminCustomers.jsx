@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import API from "../../api/axios";
 
 /* ADMIN CUSTOMERS */
 
@@ -19,38 +20,17 @@ const AdminCustomers = () => {
 
   /* LOAD CUSTOMERS */
 
-  const loadCustomers = async ()=>{
-
-    try{
-
-      const res = await fetch(
-        "http://localhost:5000/api/users?role=CUSTOMER",
-        {
-          headers:{
-            Authorization:`Bearer ${token}`
-          }
-        }
-      );
-
-      const data = await res.json();
-
-      const list =
-        Array.isArray(data) ? data :
-        Array.isArray(data.users) ? data.users : [];
-
+  const loadCustomers = async () => {
+    try {
+      const res = await API.get("/users?role=CUSTOMER");
+      const list = res.data.users || res.data || [];
       setCustomers(list);
       setFiltered(list);
-
-    }catch(err){
-
-      console.log("Customers fetch error",err);
-
-    }finally{
-
+    } catch (err) {
+      console.log("Customers fetch error", err);
+    } finally {
       setLoading(false);
-
     }
-
   };
 
   /* SEARCH */

@@ -1,29 +1,11 @@
 const prisma = require("../config/prisma");
-
-
+const { createAuditLog } = require("../services/audit.service");
 const { sendEmail } = require("../services/email.service");
 
 const LOG_REQUEST = (req, context) => {
   console.log(`[${context}] Request Body:`, JSON.stringify(req.body, null, 2));
   console.log(`[${context}] Request Params:`, JSON.stringify(req.params, null, 2));
   console.log(`[${context}] Request Query:`, JSON.stringify(req.query, null, 2));
-};
-
-const createAuditLog = async (userId, action, entityType, entityId, oldValue, newValue) => {
-  try {
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action,
-        entityType,
-        entityId: String(entityId),
-        oldValue: oldValue ? JSON.stringify(oldValue) : null,
-        newValue: newValue ? JSON.stringify(newValue) : null
-      }
-    });
-  } catch (error) {
-    console.error("Audit log error:", error);
-  }
 };
 
 const createNotification = async (userId, data) => {
@@ -70,9 +52,9 @@ const notifyAdmins = async (data) => {
     const admins = await prisma.user.findMany({
       where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
     });
-    for (const admin of admins) {
-      await createNotification(admin.id, data);
-    }
+    await Promise.all(
+      admins.map((admin) => createNotification(admin.id, data))
+    );
   } catch (error) {
     console.error("Notify admins error:", error);
   }
@@ -152,7 +134,8 @@ const createPayment = async (req, res) => {
     }
 
     const isPostService = method === "GCASH_POST_SERVICE" || (booking.status === "COMPLETED" && requiresProof);
-    const status = isPostService || method === "GCASH" ? "PENDING" : "APPROVED";
+    // GCash payments always go to FOR_VERIFICATION (admin must approve)
+    const status = (method === "GCASH" || method === "GCASH_POST_SERVICE") ? "FOR_VERIFICATION" : "APPROVED";
     const type = paymentType || (Number(booking.totalAmount) >= 5000 && Number(booking.amountPaid) === 0 ? "DOWNPAYMENT" : "FULL");
     const amount = type === "DOWNPAYMENT" 
       ? Number(booking.totalAmount) * 0.5 
@@ -172,6 +155,15 @@ const createPayment = async (req, res) => {
       }
     });
 
+    // For GCash: update booking paymentStatus to FOR_VERIFICATION
+    if (method === "GCASH" || method === "GCASH_POST_SERVICE") {
+      await prisma.booking.update({
+        where: { id: booking.id },
+        data: { paymentStatus: "FOR_VERIFICATION" }
+      });
+    }
+
+    // Cash is auto-approved
     if (method === "CASH" && !isPostService) {
       await updateBookingPaymentStatus(booking.id, amount);
     }
@@ -196,6 +188,18 @@ const createPayment = async (req, res) => {
       targetId: String(booking.id),
       targetName: `Booking #${booking.id}`
     });
+
+    // Audit log - fire and forget so it doesn't block the response
+    createAuditLog({
+      userId,
+      action: "CREATE",
+      entityType: "Payment",
+      entityId: String(payment.id),
+      newValue: { amount: Number(payment.amount), method: finalMethod, status, type },
+      details: `Customer submitted ${finalMethod} payment of ₱${Number(payment.amount).toLocaleString()} for Booking #${booking.id}`,
+      bookingId: booking.id,
+      performedBy: userId
+    }).catch(() => {});
 
     res.status(201).json({
       success: true,
@@ -232,25 +236,30 @@ const updateBookingPaymentStatus = async (bookingId, newPaymentAmount) => {
     const newAmountPaid = Number(booking.amountPaid) + Number(newPaymentAmount);
     const totalAmount = Number(booking.totalAmount);
 
-    let newStatus = booking.status;
-
+    // Determine new PAYMENT status (NEVER changes booking.status)
+    let newPaymentStatus;
     if (newAmountPaid >= totalAmount && totalAmount > 0) {
-      newStatus = "CONFIRMED";
+      newPaymentStatus = "PAID";
+    } else if (newAmountPaid > 0) {
+      newPaymentStatus = "PARTIALLY_PAID";
+    } else {
+      newPaymentStatus = "PENDING";
     }
 
     await prisma.booking.update({
       where: { id: bookingId },
       data: {
         amountPaid: newAmountPaid,
-        status: newStatus
+        paymentStatus: newPaymentStatus
+        // booking.status is intentionally NOT touched here
       }
     });
 
     await createNotification(booking.customerId, {
-      title: newStatus === "CONFIRMED" ? "Booking Confirmed" : "Payment Received",
-      message: newStatus === "CONFIRMED"
-        ? "Your booking is now fully paid and confirmed."
-        : `Payment of ₱${newPaymentAmount.toLocaleString()} received.`,
+      title: newPaymentStatus === "PAID" ? "Payment Complete" : "Payment Partially Received",
+      message: newPaymentStatus === "PAID"
+        ? "Your booking is now fully paid."
+        : `Payment of ₱${Number(newPaymentAmount).toLocaleString()} received. Remaining balance: ₱${(totalAmount - newAmountPaid).toLocaleString()}.`,
       type: "PAYMENT",
       targetId: String(bookingId)
     });
@@ -279,7 +288,14 @@ const verifyPayment = async (req, res) => {
       return res.status(403).json({ success: false, message: "Only admins can verify payments" });
     }
 
-    const { approved, rejectionReason } = req.body;
+    // action: "approve" | "reject" | "resubmit"
+    const { action, rejectionReason } = req.body;
+    // backward compat: if old "approved" bool is sent
+    const resolvedAction = action || (req.body.approved === true ? "approve" : req.body.approved === false ? "reject" : null);
+
+    if (!resolvedAction || !["approve", "reject", "resubmit"].includes(resolvedAction)) {
+      return res.status(400).json({ success: false, message: "action must be one of: approve, reject, resubmit" });
+    }
 
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
@@ -290,73 +306,74 @@ const verifyPayment = async (req, res) => {
       return res.status(404).json({ success: false, message: "Payment not found" });
     }
 
-    if (payment.status !== "PENDING") {
+    if (!["FOR_VERIFICATION", "PENDING"].includes(payment.status)) {
       return res.status(400).json({
         success: false,
         message: "Payment has already been processed"
       });
     }
 
+    let updatedPaymentStatus;
+    let bookingPaymentStatusUpdate = {};
+
+    if (resolvedAction === "approve") {
+      updatedPaymentStatus = "APPROVED";
+    } else if (resolvedAction === "reject") {
+      updatedPaymentStatus = "REJECTED";
+      bookingPaymentStatusUpdate = { paymentStatus: "REJECTED" };
+    } else {
+      // resubmit — send back to customer
+      updatedPaymentStatus = "PENDING";
+      bookingPaymentStatusUpdate = { paymentStatus: "PENDING" };
+    }
+
     const updatedPayment = await prisma.payment.update({
       where: { id: paymentId },
       data: {
-        status: approved ? "APPROVED" : "REJECTED",
-        verifiedBy: approved ? userId : null,
-        verifiedAt: approved ? new Date() : null,
+        status: updatedPaymentStatus,
+        verifiedBy: resolvedAction === "approve" ? userId : null,
+        verifiedAt: resolvedAction === "approve" ? new Date() : null,
         rejectionReason: rejectionReason || null
       }
     });
 
-    await createAuditLog(
-      userId,
-      approved ? "APPROVE" : "REJECT",
-      "Payment",
-      paymentId,
-      { status: payment.status },
-      { status: approved ? "APPROVED" : "REJECTED", amount: payment.amount }
-    );
-
-    if (approved) {
+    // If approved, update amountPaid + paymentStatus on booking
+    if (resolvedAction === "approve") {
       await updateBookingPaymentStatus(payment.bookingId, payment.amount);
-
-      await createNotification(payment.booking.customerId, {
-        title: "Payment Approved",
-        message: `Your ₱${Number(payment.amount).toLocaleString()} payment has been approved.`,
-        type: "PAYMENT",
-        actionType: "PAYMENT_APPROVED",
-        targetId: String(payment.bookingId)
-      });
-
-      await notifyAdmins({
-        title: "Payment Approved",
-        message: `Payment of ₱${Number(payment.amount).toLocaleString()} for Booking #${payment.bookingId} has been approved.`,
-        type: "PAYMENT",
-        actionType: "PAYMENT_APPROVED",
-        targetId: String(payment.bookingId),
-        targetName: `Booking #${payment.bookingId}`
-      });
-    } else {
-      await createNotification(payment.booking.customerId, {
-        title: "Payment Rejected",
-        message: rejectionReason || "Your payment was rejected. Please upload a new payment receipt.",
-        type: "PAYMENT",
-        actionType: "PAYMENT_REJECTED",
-        targetId: String(payment.bookingId)
-      });
-
-      await notifyAdmins({
-        title: "Payment Rejected",
-        message: `Payment for Booking #${payment.bookingId} has been rejected. ${rejectionReason || ""}`,
-        type: "PAYMENT",
-        actionType: "PAYMENT_REJECTED",
-        targetId: String(payment.bookingId),
-        targetName: `Booking #${payment.bookingId}`
+    } else if (Object.keys(bookingPaymentStatusUpdate).length > 0) {
+      await prisma.booking.update({
+        where: { id: payment.bookingId },
+        data: bookingPaymentStatusUpdate
       });
     }
 
+    await createAuditLog({
+      userId,
+      action: resolvedAction === "approve" ? "PAYMENT_APPROVED" : resolvedAction === "reject" ? "PAYMENT_REJECTED" : "PAYMENT_RESUBMISSION_REQUESTED",
+      entityType: "Payment",
+      entityId: String(paymentId),
+      oldValue: { status: payment.status },
+      newValue: { status: updatedPaymentStatus, amount: Number(payment.amount) },
+      details: `Admin ${resolvedAction}d payment of ₱${Number(payment.amount).toLocaleString()} for Booking #${payment.bookingId}${rejectionReason ? `. Reason: ${rejectionReason}` : ""}`,
+      bookingId: payment.bookingId,
+      performedBy: userId
+    });
+
+    const customerMsg = {
+      approve: { title: "Payment Approved", message: `Your ₱${Number(payment.amount).toLocaleString()} payment has been approved.`, actionType: "PAYMENT_APPROVED" },
+      reject: { title: "Payment Rejected", message: rejectionReason || "Your payment was rejected. Please upload a new receipt.", actionType: "PAYMENT_REJECTED" },
+      resubmit: { title: "Payment Resubmission Required", message: "Your payment receipt needs to be resubmitted. Please upload a new receipt.", actionType: "PAYMENT_RESUBMIT" }
+    }[resolvedAction];
+
+    await createNotification(payment.booking.customerId, {
+      ...customerMsg,
+      type: "PAYMENT",
+      targetId: String(payment.bookingId)
+    });
+
     res.json({
       success: true,
-      message: approved ? "Payment approved successfully" : "Payment rejected",
+      message: `Payment ${resolvedAction}d successfully`,
       payment: updatedPayment
     });
 
@@ -373,7 +390,7 @@ const verifyPayment = async (req, res) => {
 const createManualPayment = async (req, res) => {
   try {
     LOG_REQUEST(req, "CREATE_MANUAL_PAYMENT");
-    
+
     const userId = req.user?.id ? String(req.user.id) : null;
 
     if (!userId) {
@@ -383,15 +400,10 @@ const createManualPayment = async (req, res) => {
     const { bookingId, amount } = req.body;
 
     if (!bookingId || !amount) {
-      return res.status(400).json({
-        success: false,
-        message: "Booking ID and amount required"
-      });
+      return res.status(400).json({ success: false, message: "Booking ID and amount required" });
     }
 
-    const booking = await prisma.booking.findUnique({
-      where: { id: Number(bookingId) }
-    });
+    const booking = await prisma.booking.findUnique({ where: { id: Number(bookingId) } });
 
     if (!booking) {
       return res.status(404).json({ success: false, message: "Booking not found" });
@@ -416,14 +428,16 @@ const createManualPayment = async (req, res) => {
       }
     });
 
-    await createAuditLog(
+    await createAuditLog({
       userId,
-      "CREATE",
-      "Payment",
-      payment.id,
-      null,
-      { method: "MANUAL", amount: Number(amount) }
-    );
+      action: "CREATE",
+      entityType: "Payment",
+      entityId: String(payment.id),
+      newValue: { method: "MANUAL_CASH", amount: Number(amount) },
+      details: `Admin recorded manual cash payment of ₱${Number(amount).toLocaleString()} for Booking #${booking.id}`,
+      bookingId: booking.id,
+      performedBy: userId
+    });
 
     await updateBookingPaymentStatus(booking.id, amount);
 
@@ -435,11 +449,7 @@ const createManualPayment = async (req, res) => {
 
   } catch (error) {
     console.error("ERROR [CREATE_MANUAL_PAYMENT]:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal Server Error",
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
   }
 };
 
@@ -547,7 +557,7 @@ const getPendingVerifications = async (req, res) => {
     const { method, page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where = { status: "PENDING" };
+    const where = { status: "FOR_VERIFICATION" };
     if (method) {
       where.method = String(method).toUpperCase();
     }
@@ -659,14 +669,15 @@ const bulkVerifyPayments = async (req, res) => {
       }
     }
 
-    await createAuditLog(
+    await createAuditLog({
       userId,
-      "BULK_VERIFY",
-      "Payment",
-      paymentIds.join(","),
-      { count: payments.length, approved },
-      { approved }
-    );
+      action: "BULK_VERIFY",
+      entityType: "Payment",
+      entityId: paymentIds.join(","),
+      newValue: { count: payments.length, approved },
+      details: `Admin bulk ${approved ? "approved" : "rejected"} ${payments.length} payments`,
+      performedBy: userId
+    });
 
     res.json({
       success: true,

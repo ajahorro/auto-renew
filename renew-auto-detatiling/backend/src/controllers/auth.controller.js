@@ -122,7 +122,15 @@ const initiateRegistration = async (req, res) => {
       }
     });
 
-    await sendOtpEmail(email, otp, "Registration");
+    const emailResult = await sendOtpEmail(email, otp, "Registration");
+
+    if (!emailResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send registration email",
+        error: emailResult.error
+      });
+    }
 
     res.json({
       success: true,
@@ -283,7 +291,15 @@ const resendRegistrationOtp = async (req, res) => {
       data: { otp: newOtp, expiresAt }
     });
 
-    await sendOtpEmail(email, newOtp, "Registration");
+    const emailResult = await sendOtpEmail(email, newOtp, "Registration");
+
+    if (!emailResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to resend verification email",
+        error: emailResult.error
+      });
+    }
 
     res.json({
       success: true,
@@ -421,7 +437,15 @@ const forgotPassword = async (req, res) => {
       }
     });
 
-    await sendOtpEmail(email, otp, "Password Reset");
+    const emailResult = await sendOtpEmail(email, otp, "Password Reset");
+
+    if (!emailResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send reset email",
+        error: emailResult.error
+      });
+    }
 
     res.json({
       success: true,
@@ -816,7 +840,15 @@ const sendEmailOtp = async (req, res) => {
       }
     });
 
-    await sendOtpEmail(email, otp, "Email Change");
+    const emailResult = await sendOtpEmail(email, otp, "Email Change");
+
+    if (!emailResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send verification email. Please check SMTP settings.",
+        error: emailResult.error
+      });
+    }
 
     res.json({
       success: true,

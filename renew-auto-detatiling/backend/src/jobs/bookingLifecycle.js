@@ -34,40 +34,42 @@ async function syncBookingLifecycleStates() {
       }
     });
 
-    let completedPaid = 0;
-    let completedUnpaid = 0;
+    const paidIds = pastEndBookings
+      .filter(b => (Number(b.amountPaid) || 0) >= (Number(b.totalAmount) || 0) && Number(b.totalAmount) > 0)
+      .map(b => b.id);
+    
+    const unpaidIds = pastEndBookings
+      .filter(b => !paidIds.includes(b.id))
+      .map(b => b.id);
 
-    for (const booking of pastEndBookings) {
-      const paid = Number(booking.amountPaid) || 0;
-      const total = Number(booking.totalAmount) || 0;
-
-      if (total > 0 && paid >= total) {
-        // Fully paid → complete and lock
-        await prisma.booking.update({
-          where: { id: booking.id },
-          data: { status: "COMPLETED", isLocked: true }
-        });
-        completedPaid++;
-      } else {
-        // Unpaid → complete but keep unlocked for payment recording
-        await prisma.booking.update({
-          where: { id: booking.id },
-          data: { status: "COMPLETED", isLocked: false }
-        });
-        completedUnpaid++;
-      }
+    if (paidIds.length > 0) {
+      await prisma.booking.updateMany({
+        where: { id: { in: paidIds } },
+        data: { status: "COMPLETED", serviceStatus: "COMPLETED", isLocked: true }
+      });
     }
 
-    // ── 3: Stale PENDING bookings ────────────────────────────────────
+    if (unpaidIds.length > 0) {
+      await prisma.booking.updateMany({
+        where: { id: { in: unpaidIds } },
+        data: { status: "COMPLETED", serviceStatus: "COMPLETED", isLocked: false }
+      });
+    }
+
+    completedPaid = paidIds.length;
+    completedUnpaid = unpaidIds.length;
+
+    // ── 3: Stale active bookings whose appointment already started ────
+    // Covers both legacy PENDING and new SCHEDULED statuses
     const stalePending = await prisma.booking.updateMany({
       where: {
-        status: "PENDING",
+        status: { in: ["PENDING", "SCHEDULED", "CONFIRMED"] },
         appointmentStart: { lt: startOfToday }
       },
       data: {
         status: "CANCELLED",
         isLocked: true,
-        cancellationReason: "Auto-cancelled: appointment time passed without confirmation"
+        cancellationReason: "Auto-cancelled: appointment date passed without service delivery"
       }
     });
 

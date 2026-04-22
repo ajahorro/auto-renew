@@ -1,8 +1,9 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react"
+import { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 import { confirmAction } from "../../components/ConfirmModal";
 import CustomerLayout from "../../components/CustomerLayout";
+import API from "../../api/axios";
 import "../../App.css";
 import { 
   User, 
@@ -28,7 +29,6 @@ const CustomerDashboard = () => {
   };
 
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
 
   const [booking, setBooking] = useState({
     id: null,
@@ -52,43 +52,21 @@ const CustomerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState([]);
   
-  useEffect(() => {
-    if (!token) return;
+  const emptyBooking = {
+    id: null, status: "", paymentStatus: "", appointmentStart: null,
+    services: [], notes: "", totalAmount: 0, amountPaid: 0,
+    customer: null, payments: [], vehicleType: "", plateNumber: "",
+    contactNumber: "", email: "", paymentMethod: "CASH"
+  };
 
+  useEffect(() => {
     const loadBooking = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/bookings", {
-          headers: { Authorization: `Bearer ${token}` },
-          method: "GET"
-        });
-
-        let data;
-        try {
-          data = await res.json();
-        } catch {
-          throw new Error("Server error");
-        }
-
-        const bookings = Array.isArray(data) ? data : data.bookings || [];
+        const res = await API.get("/bookings");
+        const bookings = res.data.bookings || [];
 
         if (bookings.length === 0) {
-          setBooking({
-            id: null,
-            status: "",
-            paymentStatus: "",
-            appointmentStart: null,
-            services: [],
-            notes: "",
-            totalAmount: 0,
-            amountPaid: 0,
-            customer: null,
-            payments: [],
-            vehicleType: "",
-            plateNumber: "",
-            contactNumber: "",
-            email: "",
-            paymentMethod: "CASH"
-          });
+          setBooking(emptyBooking);
           setHistory([]);
           setLoading(false);
           return;
@@ -108,7 +86,7 @@ const CustomerDashboard = () => {
             status: activeBooking.status,
             paymentStatus: activeBooking.paymentStatus,
             appointmentStart: activeBooking.appointmentStart,
-            services: services,
+            services,
             notes: activeBooking.notes || "",
             totalAmount: Number(activeBooking.totalAmount || 0),
             amountPaid: Number(activeBooking.amountPaid || 0),
@@ -125,7 +103,7 @@ const CustomerDashboard = () => {
         const completedBookings = bookings.filter(b => b.status === "COMPLETED").slice(0, 2);
         setHistory(completedBookings);
       } catch (err) {
-        console.error(err);
+        console.error("Failed to load booking:", err);
       } finally {
         setLoading(false);
       }
@@ -134,25 +112,19 @@ const CustomerDashboard = () => {
     loadBooking();
     const interval = setInterval(loadBooking, 10000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, []);
 
   useEffect(() => {
-    if (!token) return;
-
     const loadNotifications = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/notifications", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        setNotifications(data.notifications || []);
+        const res = await API.get("/notifications");
+        setNotifications(res.data.notifications || []);
       } catch (err) {
         console.log("Notification fetch error:", err);
       }
     };
-
     loadNotifications();
-  }, [token]);
+  }, []);
 
   const total = booking.services.reduce((sum, s) => sum + (s.price || 0), 0);
   const balance = total - booking.amountPaid;
@@ -171,38 +143,14 @@ const CustomerDashboard = () => {
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/bookings/request-cancel/${booking.id}`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ reason: "Requested by customer from dashboard" })
+      const res = await API.patch(`/bookings/request-cancel/${booking.id}`, {
+        reason: "Requested by customer from dashboard"
       });
-
-      if (!res.ok) return;
-      await res.json();
-      toast.success("Booking cancelled");
-      setBooking({
-        id: null,
-        status: "",
-        paymentStatus: "",
-        appointmentStart: null,
-        services: [],
-        notes: "",
-        totalAmount: 0,
-        amountPaid: 0,
-        customer: null,
-        payments: [],
-        vehicleType: "",
-        plateNumber: "",
-        contactNumber: "",
-        email: "",
-        paymentMethod: "CASH"
-      });
+      toast.success(res.data.message || "Cancellation request submitted");
+      setBooking(emptyBooking);
     } catch (err) {
       console.error("Cancel failed", err);
-      toast.error("Cancel failed");
+      toast.error(err.response?.data?.message || "Cancel failed");
     }
   };
 

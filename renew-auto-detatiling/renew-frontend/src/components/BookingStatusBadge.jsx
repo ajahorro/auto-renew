@@ -1,31 +1,28 @@
-import { 
-  Clock, 
-  Calendar, 
-  Play, 
-  CheckCircle2, 
-  XCircle,
-  AlertCircle
-} from "lucide-react";
+import { Calendar, XCircle, CheckCircle2, AlertCircle } from "lucide-react";
 
+// Booking Status = APPOINTMENT LIFECYCLE only
+// Valid statuses: SCHEDULED, CANCELLED
+// Note: ONGOING and PENDING/CONFIRMED are legacy DB values — mapped to SCHEDULED
 const BookingStatusBadge = ({ status }) => {
-  const getIcon = () => {
+  const getConfig = () => {
     switch (status) {
-      case "PENDING": return <Clock size={12} />;
-      case "SCHEDULED": return <Calendar size={12} />;
-      case "ONGOING": return <Play size={12} />;
-      case "COMPLETED": return <CheckCircle2 size={12} />;
-      case "CANCELLED": return <XCircle size={12} />;
-      default: return <AlertCircle size={12} />;
+      case "SCHEDULED":
+        return { icon: <Calendar size={12} />, label: "Scheduled", color: "#3b82f6" };
+      case "CANCELLED":
+        return { icon: <XCircle size={12} />, label: "Cancelled", color: "#ef4444" };
+      case "COMPLETED":
+        return { icon: <CheckCircle2 size={12} />, label: "Completed", color: "#22c55e" };
+      // Legacy DB values — silently map to Scheduled (they are valid active bookings)
+      case "PENDING":
+      case "CONFIRMED":
+      case "ONGOING":
+        return { icon: <Calendar size={12} />, label: "Scheduled", color: "#3b82f6" };
+      default:
+        return { icon: <AlertCircle size={12} />, label: status || "Unknown", color: "#94a3b8" };
     }
   };
 
-  const colors = {
-    PENDING: "var(--accent-yellow)",
-    SCHEDULED: "var(--accent-blue)",
-    ONGOING: "var(--accent-orange)",
-    COMPLETED: "var(--accent-green)",
-    CANCELLED: "var(--accent-red)"
-  };
+  const { icon, label, color } = getConfig();
 
   return (
     <span
@@ -35,16 +32,17 @@ const BookingStatusBadge = ({ status }) => {
         gap: "6px",
         padding: "4px 10px",
         borderRadius: "12px",
-        background: colors[status] || "#999",
+        background: color,
         color: "white",
         fontSize: "11px",
-        fontWeight: "600",
+        fontWeight: "700",
         textTransform: "uppercase",
-        letterSpacing: "0.5px"
+        letterSpacing: "0.5px",
+        whiteSpace: "nowrap"
       }}
     >
-      {getIcon()}
-      {status}
+      {icon}
+      {label}
     </span>
   );
 };

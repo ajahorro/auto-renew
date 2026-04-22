@@ -128,7 +128,9 @@ const REQUEST_CANCELLATION = async (req, res) => {
       });
     }
 
-    if (!["PENDING", "CONFIRMED", "ONGOING"].includes(booking.status)) {
+    // Allow cancellation requests for SCHEDULED bookings (or legacy PENDING/CONFIRMED/ONGOING)
+    const cancellableStatuses = ["SCHEDULED", "PENDING", "CONFIRMED", "ONGOING"];
+    if (!cancellableStatuses.includes(booking.status)) {
       return res.status(400).json({
         success: false,
         message: "Cannot request cancellation for this booking status"

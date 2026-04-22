@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import API from "../../api/axios";
 import StaffSidebar from "../../components/StaffSidebar";
 import toast from "react-hot-toast";
-import { confirmAction } from "../../components/ConfirmModal";
+
 import BookingStatusBadge from "../../components/BookingStatusBadge";
 import PaymentStatusBadge from "../../components/PaymentStatusBadge";
 import { 
@@ -14,7 +14,6 @@ import {
   Package, 
   Play, 
   CheckCircle2, 
-  XCircle, 
   ArrowRight,
   Info
 } from "lucide-react";
@@ -32,13 +31,8 @@ const StaffDashboard = () => {
       const res = await API.get("/bookings");
       const data = res.data;
       const allBookings = Array.isArray(data) ? data : (data.bookings || []);
-      const filtered = allBookings.filter(b =>
-        b.status === "CONFIRMED" ||
-        b.status === "ONGOING" ||
-        b.status === "COMPLETED" ||
-        b.status === "CANCELLED"
-      );
-      setBookings(filtered);
+      // Staff sees bookings assigned to them (backend filters by assignedStaffId)
+      setBookings(allBookings);
     } catch (err) {
       console.log("Staff bookings error", err);
     } finally {
@@ -50,37 +44,15 @@ const StaffDashboard = () => {
     loadAssignedBookings();
   }, [loadAssignedBookings]);
 
-  const updateStatus = async (bookingId, status) => {
+  // Staff updates SERVICE status only (not booking status)
+  const updateServiceStatus = async (bookingId, serviceStatus) => {
     try {
       setUpdatingId(bookingId);
-      await API.patch(`/bookings/${bookingId}/status`, { status });
-      toast.success(`Booking marked as ${status.toLowerCase()}`);
+      await API.patch(`/bookings/${bookingId}/service-status`, { serviceStatus });
+      toast.success(serviceStatus === "ONGOING" ? "Service started!" : "Service completed!");
       await loadAssignedBookings();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to update status");
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const requestCancel = async (bookingId) => {
-    const confirmed = await confirmAction({
-      title: "Request Cancellation",
-      message: "Request to cancel this booking? This will notify the admin.",
-      confirmText: "Yes, Request",
-      cancelText: "Keep Booking",
-      type: "danger"
-    });
-    
-    if (!confirmed) return;
-    
-    try {
-      setUpdatingId(bookingId);
-      await API.post(`/bookings/${bookingId}/request-cancel`);
-      toast.success("Cancellation request sent to admin");
-      await loadAssignedBookings();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to request cancellation");
+      toast.error(err.response?.data?.message || "Failed to update service status");
     } finally {
       setUpdatingId(null);
     }
@@ -98,8 +70,9 @@ const StaffDashboard = () => {
     });
   };
 
-  const activeBookings = bookings.filter(b => b.status !== "COMPLETED" && b.status !== "CANCELLED");
-  const completedBookings = bookings.filter(b => b.status === "COMPLETED" || b.status === "CANCELLED");
+  // Segment by SERVICE status (not booking.status)
+  const activeBookings = bookings.filter(b => b.serviceStatus === "NOT_STARTED" || b.serviceStatus === "ONGOING");
+  const completedBookings = bookings.filter(b => b.serviceStatus === "COMPLETED");
 
   const getScheduleBookings = () => {
     return bookings.filter(b => {
@@ -201,25 +174,25 @@ const StaffDashboard = () => {
 
                           <div style={styles.cardFooter}>
                             <div style={styles.actionRow}>
-                              {b.status === "CONFIRMED" && (
+                              {b.serviceStatus === "NOT_STARTED" && (
                                 <button
                                   style={styles.startBtn}
                                   disabled={updatingId === b.id}
-                                  onClick={() => updateStatus(b.id, "ONGOING")}
+                                  onClick={() => updateServiceStatus(b.id, "ONGOING")}
                                 >
                                   <Play size={14} />
                                   Start Service
                                 </button>
                               )}
 
-                              {b.status === "ONGOING" && (
+                              {b.serviceStatus === "ONGOING" && (
                                 <button
                                   style={styles.completeBtn}
                                   disabled={updatingId === b.id}
-                                  onClick={() => updateStatus(b.id, "COMPLETED")}
+                                  onClick={() => updateServiceStatus(b.id, "COMPLETED")}
                                 >
                                   <CheckCircle2 size={14} />
-                                  Complete
+                                  Finish Service
                                 </button>
                               )}
 

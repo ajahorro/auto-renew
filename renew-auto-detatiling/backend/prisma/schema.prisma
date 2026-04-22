@@ -15,8 +15,13 @@ enum Role {
 }
 
 enum BookingStatus {
-  Scheduled
-  Cancelled
+  PENDING
+  CONFIRMED
+  ONGOING
+  CANCELLED
+  COMPLETED
+  SCHEDULED   // legacy
+  PENDING_PAYMENT // legacy
 }
 
 enum CancellationStatus {
@@ -40,17 +45,20 @@ enum PaymentMethod {
 }
 
 enum PaymentStatus {
-  Pending
-  ForVerification
-  PartiallyPaid
-  Paid
-  Rejected
+  PENDING
+  FOR_VERIFICATION
+  PARTIALLY_PAID
+  PAID
+  REJECTED
+  APPROVED    // legacy
+  VERIFIED    // legacy
+  COMPLETED   // legacy
 }
 
 enum ServiceStatus {
-  NotStarted
-  Ongoing
-  Completed
+  NOT_STARTED
+  ONGOING
+  COMPLETED
 }
 
 enum PaymentType {
@@ -107,6 +115,7 @@ model User {
   notifications   Notification[]
   cancellationRequests CancellationRequest[]
   communicationLogs CommunicationLog[]
+  auditLogs        AuditLog[]
 
   // OTP for registration
   otpVerification OtpVerification?
@@ -199,11 +208,11 @@ model Booking {
   id         Int  @id @default(autoincrement())
   customerId String
 
-  status BookingStatus @default(Scheduled)
+  status BookingStatus @default(SCHEDULED)
   cancellationStatus CancellationStatus @default(NONE)
   refundStatus RefundStatus @default(NONE)
-  paymentStatus PaymentStatus @default(Pending)
-  serviceStatus ServiceStatus @default(NotStarted)
+  paymentStatus PaymentStatus @default(PENDING)
+  serviceStatus ServiceStatus @default(NOT_STARTED)
   auditLogs    AuditLog[]
 
   totalAmount    Decimal @db.Decimal(10, 2)
@@ -294,7 +303,7 @@ model Payment {
 
   amount     Decimal @db.Decimal(10, 2)
   method     PaymentMethod @default(CASH)
-  status     PaymentStatus @default(Pending)
+  status     PaymentStatus @default(PENDING)
   paymentType PaymentType @default(FULL)
   createdBy  PaymentCreatedBy @default(CUSTOMER)
 
@@ -460,7 +469,7 @@ model BusinessSettings {
 
 model AuditLog {
   id        String   @id @default(cuid())
-  bookingId String?
+  bookingId Int?
   
   userId    String?
   action    String
@@ -478,6 +487,7 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   booking Booking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  performer User? @relation(fields: [userId], references: [id])
 
   @@index([bookingId])
   @@index([entityType, entityId])
