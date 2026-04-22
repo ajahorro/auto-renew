@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, XCircle, AlertCircle, Eye, DollarSign } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, AlertCircle, Eye, DollarSign, RefreshCw } from "lucide-react";
 
 const PaymentStatusBadge = ({ status }) => {
   const configs = {
@@ -16,13 +16,13 @@ const PaymentStatusBadge = ({ status }) => {
     },
     PARTIALLY_PAID: {
       icon: <DollarSign size={12} />,
-      label: "Partially Paid",
-      color: "#f97316",
+      label: "Downpayment Paid",
+      color: "#0ea5e9",
       textColor: "#fff"
     },
     PAID: {
       icon: <CheckCircle2 size={12} />,
-      label: "Paid",
+      label: "Completed",
       color: "#22c55e",
       textColor: "#fff"
     },
@@ -32,22 +32,15 @@ const PaymentStatusBadge = ({ status }) => {
       color: "#ef4444",
       textColor: "#fff"
     },
-    // Legacy aliases
-    APPROVED: {
-      icon: <CheckCircle2 size={12} />,
-      label: "Paid",
-      color: "#22c55e",
+    REFUNDED: {
+      icon: <RefreshCw size={12} />,
+      label: "Refunded",
+      color: "#64748b",
       textColor: "#fff"
     },
-    VERIFIED: {
-      icon: <CheckCircle2 size={12} />,
-      label: "Verified",
-      color: "#22c55e",
-      textColor: "#fff"
-    },
-    UNPAID: {
+    CANCELLED: {
       icon: <XCircle size={12} />,
-      label: "Unpaid",
+      label: "Cancelled",
       color: "#ef4444",
       textColor: "#fff"
     }

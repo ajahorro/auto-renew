@@ -1,6 +1,8 @@
 body {
   margin: 0;
   font-family: "Poppins", system-ui, -apple-system, sans-serif;
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
   background: var(--bg-primary);
   color: var(--text-primary);
 }
@@ -18,19 +20,20 @@ p {
 }
 
 .section {
-  margin-top: 20px;
+  margin-top: var(--space-xl);
 }
 
 .section-lg {
-  margin-top: 30px;
+  margin-top: var(--space-2xl);
 }
 
 /* SIDEBAR (DO NOT CONFLICT WITH INLINE STYLES) */
 
 .sidebar {
-  width: 260px;
+  width: 260px; /* Keep fixed width for layout integrity */
   background: var(--sidebar-bg);
   color: var(--text-primary);
+  padding: var(--space-md);
 }
 
 /* MAIN CONTENT */
@@ -47,7 +50,7 @@ p {
 .dashboard-grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
-  gap: 24px;
+  gap: var(--space-xl);
   align-items: start;
   width: 100%;
 }
@@ -57,7 +60,7 @@ p {
 .right-stack {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--space-xl);
   width: 100%;
 }
 
@@ -66,8 +69,8 @@ p {
 .card {
   background: var(--card-bg) !important;
   color: var(--text-primary) !important;
-  border-radius: 14px;
-  padding: 24px;
+  border-radius: var(--radius-md);
+  padding: var(--space-xl);
   box-shadow: 0 6px 25px rgba(0,0,0,0.35);
   width: 100%;
   box-sizing: border-box;
@@ -84,7 +87,7 @@ p {
 /* CARD HEADINGS */
 
 .card h3 {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-md);
   color: var(--text-primary);
 }
 
@@ -108,11 +111,11 @@ hr {
 /* CTA SECTION */
 
 .cta-card {
-  margin-top: 30px;
+  margin-top: var(--space-2xl);
   background: var(--card-bg);
   color: var(--text-primary);
-  border-radius: 14px;
-  padding: 24px;
+  border-radius: var(--radius-md);
+  padding: var(--space-xl);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -125,10 +128,11 @@ hr {
   background: var(--accent-blue);
   color: white;
   border: none;
-  padding: 10px 18px;
-  border-radius: 8px;
+  padding: var(--space-sm) var(--space-lg);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 600;
+  font-size: var(--text-body);
 }
 
 /* BUTTON DEFAULT */
@@ -163,10 +167,11 @@ button:disabled {
 
 .date-picker-input {
   width: 100%;
-  padding: 10px;
-  border-radius: 8px;
+  padding: var(--space-sm);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-color);
   background: var(--bg-primary);
   color: var(--text-primary);
-  margin-top: 8px;
+  margin-top: var(--space-xs);
+  font-size: var(--text-body);
 }

@@ -480,7 +480,7 @@ const cancelBooking = async (req, res) => {
           entityId: String(id),
           oldValue: JSON.stringify({ status: booking.status }),
           newValue: JSON.stringify({ status: STATUS.CANCELLED }),
-          details: "Booking cancelled by admin",
+          details: `Booking cancelled by admin ${actor?.fullName || ""}`,
           bookingId: id,
           performedBy: req.user.id
         }
@@ -603,15 +603,33 @@ const assignStaff = async (req, res) => {
     UPDATE DATABASE & NOTIFY
     =================================
     */
-    const previousStaffId = booking.assignedStaffId;
-    const isReassignment = previousStaffId && previousStaffId !== String(assignedStaffId);
+    const previousStaffId = booking.assignedStaffId ? String(booking.assignedStaffId) : null;
+    const newStaffId = assignedStaffId ? String(assignedStaffId) : null;
+    
+    if (previousStaffId === newStaffId) {
+      return res.json({ 
+        success: true, 
+        message: "Staff is already assigned to this booking",
+        booking: booking
+      });
+    }
+
+    const isReassignment = !!previousStaffId;
 
     const result = await prisma.$transaction(async (tx) => {
+      // Fetch details for audit log
+      const [staff, performer, currentBooking] = await Promise.all([
+        tx.user.findUnique({ where: { id: String(assignedStaffId) }, select: { fullName: true } }),
+        tx.user.findUnique({ where: { id: req.user.id }, select: { fullName: true } }),
+        tx.booking.findUnique({ where: { id }, include: { assignedStaff: { select: { fullName: true } } } })
+      ]);
+
+      const prevStaffName = currentBooking?.assignedStaff?.fullName || "None";
+
       const updatedBooking = await tx.booking.update({
         where: { id },
         data: { 
           assignedStaffId: String(assignedStaffId)
-          // booking.status is NOT changed on staff assignment
         },
         include: { assignedStaff: { select: { fullName: true } }, customer: { select: { fullName: true } } }
       });
@@ -672,11 +690,11 @@ const assignStaff = async (req, res) => {
           action: isReassignment ? "STAFF_REASSIGNED" : "STAFF_ASSIGNED",
           entityType: "Booking",
           entityId: String(id),
-          oldValue: JSON.stringify({ assignedStaffId: previousStaffId }),
-          newValue: JSON.stringify({ assignedStaffId: String(assignedStaffId) }),
+          oldValue: JSON.stringify({ assignedStaff: prevStaffName }),
+          newValue: JSON.stringify({ assignedStaff: staff.fullName }),
           details: isReassignment 
-            ? `Staff reassigned from ${previousStaffId} to ${assignedStaffId}` 
-            : `Staff assigned: ${assignedStaffId}`,
+            ? `Staff reassigned from ${prevStaffName} to ${staff.fullName} by ${performer.fullName}` 
+            : `Staff ${staff.fullName} assigned to booking #${id} by ${performer.fullName}`,
           bookingId: id,
           performedBy: req.user.id
         }
@@ -724,6 +742,11 @@ const updateBookingStatus = async (req, res) => {
       });
     }
 
+    const actor = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { fullName: true }
+    });
+
     const actorRole = String(req.user.role || "").toUpperCase();
 
     // Locked bookings cannot be modified
@@ -734,8 +757,7 @@ const updateBookingStatus = async (req, res) => {
       });
     }
 
-    // Only admins can change booking status (to CANCELLED)
-    // Service status changes go through a separate endpoint
+    // Only admins can change booking status
     if (!isPrivilegedRole(actorRole)) {
       return res.status(403).json({
         success: false,
@@ -744,10 +766,11 @@ const updateBookingStatus = async (req, res) => {
     }
 
     // Validate the requested status
-    if (status !== STATUS.CANCELLED) {
+    const allowedStatuses = [STATUS.CANCELLED, STATUS.ONGOING, STATUS.COMPLETED];
+    if (!allowedStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: "Admins can only cancel bookings via this endpoint"
+        message: `Admins can only change status to: ${allowedStatuses.join(", ")}`
       });
     }
 
@@ -799,12 +822,21 @@ const updateBookingStatus = async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Update Booking
+      const updateData = { 
+        status, 
+        isLocked: isNowLocked 
+      };
+
+      // Sync service status if admin manually overrides
+      if (status === STATUS.ONGOING) {
+        updateData.serviceStatus = SERVICE_STATUS.ONGOING;
+      } else if (status === STATUS.COMPLETED) {
+        updateData.serviceStatus = SERVICE_STATUS.COMPLETED;
+      }
+
       const updatedBooking = await tx.booking.update({
         where: { id },
-        data: { 
-          status, 
-          isLocked: isNowLocked 
-        }
+        data: updateData
       });
 
       // 2. Notify Customer
@@ -872,7 +904,7 @@ const updateBookingStatus = async (req, res) => {
       entityId: String(id),
       oldValue: { status: booking.status },
       newValue: { status },
-      details: `Booking status updated to ${status}`,
+      details: `Booking status updated to ${status} by ${actor?.fullName || "Admin"}`,
       bookingId: id,
       performedBy: req.user.id
     });
@@ -1403,6 +1435,8 @@ const getAdminAnalytics = async (req, res) => {
     const [
       totalCount,
       statusCounts,
+      serviceStatusCounts,
+      paymentStatusCounts,
       todayCount,
       weekCount,
       monthCount
@@ -1412,6 +1446,14 @@ const getAdminAnalytics = async (req, res) => {
         by: ['status'],
         _count: true
       }),
+      prisma.booking.groupBy({
+        by: ['serviceStatus'],
+        _count: true
+      }),
+      prisma.booking.groupBy({
+        by: ['paymentStatus'],
+        _count: true
+      }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfToday } } }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfWeek } } }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfMonth } } })
@@ -1419,21 +1461,27 @@ const getAdminAnalytics = async (req, res) => {
 
     // Map status counts for easy access
     const counts = {
-      PENDING: 0,
-      SCHEDULED: 0,
-      ONGOING: 0,
-      COMPLETED: 0,
-      CANCELLED: 0
+      booking: { PENDING: 0, SCHEDULED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0, CONFIRMED: 0 },
+      service: { NOT_STARTED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0 },
+      payment: { PENDING: 0, FOR_VERIFICATION: 0, PARTIALLY_PAID: 0, PAID: 0, REJECTED: 0, APPROVED: 0, VERIFIED: 0, COMPLETED: 0 }
     };
+
     statusCounts.forEach(c => {
-      counts[c.status] = c._count;
+      if (counts.booking[c.status] !== undefined) counts.booking[c.status] = c._count;
+    });
+    serviceStatusCounts.forEach(c => {
+      if (counts.service[c.serviceStatus] !== undefined) counts.service[c.serviceStatus] = c._count;
+    });
+    paymentStatusCounts.forEach(c => {
+      if (counts.payment[c.paymentStatus] !== undefined) counts.payment[c.paymentStatus] = c._count;
     });
 
     // 2. Revenue Aggregations (Database-side)
     const [
       revenueData,
       paymentMethodData,
-      unpaidData
+      unpaidData,
+      monthRevenueData
     ] = await Promise.all([
       prisma.payment.aggregate({
         where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] } },
@@ -1447,10 +1495,18 @@ const getAdminAnalytics = async (req, res) => {
       prisma.booking.aggregate({
         where: { status: { notIn: ["CANCELLED", "COMPLETED"] } },
         _sum: { totalAmount: true, amountPaid: true }
+      }),
+      prisma.payment.aggregate({
+        where: { 
+          status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] },
+          createdAt: { gte: startOfMonth }
+        },
+        _sum: { amount: true }
       })
     ]);
 
     const totalRevenue = Number(revenueData._sum?.amount || 0);
+    const monthRevenue = Number(monthRevenueData._sum?.amount || 0);
     const gcashRevenue = paymentMethodData
       .filter(p => p.method === "GCASH" || p.method === "GCASH_POST_SERVICE")
       .reduce((sum, p) => sum + (Number(p._sum?.amount || 0)), 0);
@@ -1537,44 +1593,78 @@ const getAdminAnalytics = async (req, res) => {
       _count: { id: true }
     });
 
-    const staffWithNames = await Promise.all(
-      staffBookings.map(async (sb) => {
-        const [staff, completedCount] = await Promise.all([
-          prisma.user.findUnique({
-            where: { id: sb.assignedStaffId },
-            select: { fullName: true }
-          }),
-          prisma.booking.count({
-            where: { 
-              assignedStaffId: sb.assignedStaffId,
-              status: "COMPLETED"
-            }
-          })
-        ]);
-        
-        return {
-          id: sb.assignedStaffId,
-          name: staff?.fullName || "Unknown",
-          totalBookings: sb._count.id,
-          completedBookings: completedCount,
-          completionRate: sb._count.id > 0 
-            ? Number(((completedCount / sb._count.id) * 100).toFixed(1)) 
-            : 0
-        };
+    const [staffDetails, staffCompletedCounts] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: staffBookings.map(sb => sb.assignedStaffId) } },
+        select: { id: true, fullName: true }
+      }),
+      prisma.booking.groupBy({
+        by: ["assignedStaffId"],
+        where: { 
+          assignedStaffId: { in: staffBookings.map(sb => sb.assignedStaffId) },
+          status: "COMPLETED"
+        },
+        _count: { id: true }
       })
-    );
+    ]);
+
+    const staffMap = {};
+    staffDetails.forEach(s => staffMap[s.id] = s.fullName);
+    
+    const completedMap = {};
+    staffCompletedCounts.forEach(sc => completedMap[sc.assignedStaffId] = sc._count.id);
+
+    const staffWithNames = staffBookings.map(sb => {
+      const total = sb._count.id;
+      const completed = completedMap[sb.assignedStaffId] || 0;
+      return {
+        id: sb.assignedStaffId,
+        name: staffMap[sb.assignedStaffId] || "Unknown",
+        totalBookings: total,
+        completedBookings: completed,
+        completionRate: total > 0 ? Number(((completed / total) * 100).toFixed(1)) : 0
+      };
+    });
+
+      };
+    });
+
+    // AI Revenue Forecast Logic
+    const today = new Date();
+    const currentDay = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    
+    const projectedRevenue = currentDay > 0 
+      ? (monthRevenue / currentDay) * daysInMonth 
+      : 0;
+    
+    // Growth compared to current total (this is just an example, could compare to prev month)
+    const projectedGrowth = totalRevenue > 0 
+      ? ((projectedRevenue - (totalRevenue / 12)) / (totalRevenue / 12) * 100).toFixed(1)
+      : 0;
+
+    const forecast = {
+      projectedRevenue: Number(projectedRevenue.toFixed(2)),
+      projectedGrowth: Number(projectedGrowth),
+      confidenceScore: currentDay > 20 ? 90 : currentDay > 10 ? 75 : 50
+    };
 
     res.json({
       success: true,
       analytics: {
         counts: {
           total: totalCount,
-          pending: counts.PENDING,
-          scheduled: counts.SCHEDULED,
-          ongoing: counts.ONGOING,
-          completed: counts.COMPLETED,
-          cancelled: counts.CANCELLED,
+          booking: counts.booking,
+          service: counts.service,
+          payment: counts.payment,
+          // Legacy support (to avoid breaking current UI before update)
+          pending: counts.booking.PENDING,
+          scheduled: counts.booking.SCHEDULED,
+          ongoing: counts.booking.ONGOING,
+          completed: counts.booking.COMPLETED,
+          cancelled: counts.booking.CANCELLED,
         },
+        forecast,
         bookingTrends: {
           today: todayCount,
           thisWeek: weekCount,
@@ -2791,6 +2881,11 @@ const processCancellationRequest = async (req, res) => {
       return res.status(400).json({ success: false, message: "No pending cancellation request for this booking" });
     }
 
+    const actor = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { fullName: true }
+    });
+
     const result = await prisma.$transaction(async (tx) => {
       const isApproval = action === "approve";
 
@@ -2824,7 +2919,7 @@ const processCancellationRequest = async (req, res) => {
           action: isApproval ? "APPROVE_CANCEL" : "REJECT_CANCEL",
           entityType: "Booking",
           entityId: String(id),
-          details: `Admin ${action}ed cancellation request. ${adminNote || ""}`,
+          details: `${req.user.role === "ADMIN" ? "Admin" : "Staff"} ${actor?.fullName || ""} ${action}ed cancellation request. ${adminNote || ""}`,
           bookingId: id,
           performedBy: req.user.id
         }

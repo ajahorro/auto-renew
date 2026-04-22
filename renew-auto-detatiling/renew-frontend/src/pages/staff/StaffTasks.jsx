@@ -37,11 +37,12 @@ const StaffTasks = () => {
   const updateStatus = async (bookingId, status) => {
     try {
       setUpdatingId(bookingId);
-      await API.patch(`/bookings/${bookingId}/status`, { status });
-      toast.success(`Booking marked as ${status.toLowerCase()}`);
+      // Staff should use the service-status endpoint
+      await API.post(`/bookings/${bookingId}/service-status`, { serviceStatus: status });
+      toast.success(`Service marked as ${status.toLowerCase()}`);
       await loadAssignedBookings();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to update status");
+      toast.error(err.response?.data?.message || "Failed to update service status");
     } finally {
       setUpdatingId(null);
     }

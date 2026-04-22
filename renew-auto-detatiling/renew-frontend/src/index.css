@@ -2,6 +2,7 @@
 /* These are set dynamically by ThemeContext */
 
 :root {
+  /* Colors */
   --bg-primary: #020617;
   --bg-secondary: #0f172a;
   --bg-tertiary: #1e293b;
@@ -14,6 +15,35 @@
   --border-color: #334155;
   --card-bg: #0f172a;
   --sidebar-bg: #020617;
+
+  /* Sizing Scale (Ratio: 1.25) */
+  --scale-base: 1rem; /* 16px */
+
+  /* Typography */
+  --text-h1: clamp(2.25rem, 6vw, 3rem);
+  --text-h2: clamp(1.75rem, 5vw, 2.5rem);
+  --text-h3: clamp(1.5rem, 4vw, 2rem);
+  --text-h4: 1.5rem;
+  --text-h5: 1.25rem;
+  --text-body: 1rem;
+  --text-small: 0.875rem;
+
+  --lh-body: 1.6;
+  --lh-heading: 1.25;
+
+  /* Spacing */
+  --space-xs: 0.5rem;   /* 8px */
+  --space-sm: 0.75rem;  /* 12px */
+  --space-md: 1rem;     /* 16px */
+  --space-lg: 1.25rem;  /* 20px */
+  --space-xl: 1.5rem;   /* 24px */
+  --space-2xl: 2rem;    /* 32px */
+  --space-3xl: 2.5rem;  /* 40px */
+
+  /* Border Radius */
+  --radius-sm: 0.5rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.5rem;
 }
 
 @media (prefers-color-scheme: light) {
@@ -36,6 +66,8 @@
 body {
   margin: 0;
   font-family: Poppins, Inter, system-ui, sans-serif;
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
   background: var(--bg-primary);
   color: var(--text-primary);
   transition: background 0.3s ease, color 0.3s ease;
@@ -43,7 +75,15 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   color: var(--text-primary);
+  line-height: var(--lh-heading);
 }
+
+h1 { font-size: var(--text-h1); }
+h2 { font-size: var(--text-h2); }
+h3 { font-size: var(--text-h3); }
+h4 { font-size: var(--text-h4); }
+h5 { font-size: var(--text-h5); }
+small { font-size: var(--text-small); }
 
 /* Cards */
 .card, .dashboard-card {

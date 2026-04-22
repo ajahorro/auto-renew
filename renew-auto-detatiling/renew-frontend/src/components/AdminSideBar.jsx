@@ -1,7 +1,8 @@
-import { useContext, useEffect, useState, useCallback } from "react";
+import { useContext, useEffect, useState, useCallback, useRef } from "react";
 import { AuthContext } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
+import toast from "react-hot-toast";
 import { confirmAction } from "./ConfirmModal";
 import { 
   LayoutDashboard, 
@@ -70,11 +71,32 @@ const AdminSidebar = ({ active }) => {
   const { logout: contextLogout } = useContext(AuthContext);
   const [notifCount, setNotifCount] = useState(0);
 
+  const lastCountRef = useRef(0);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const res = await API.get("/notifications");
       const list = res.data?.notifications || res.data || [];
-      setNotifCount(list.filter(n => !n.isRead).length);
+      const unread = list.filter(n => !n.isRead);
+      const unreadCount = unread.length;
+      
+      if (unreadCount > lastCountRef.current) {
+        const latest = unread[0];
+        if (latest) {
+          toast(latest.title || "New Notification", {
+            icon: "🔔",
+            style: {
+              borderRadius: "10px",
+              background: "var(--card-bg)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border-color)",
+            }
+          });
+        }
+      }
+      
+      setNotifCount(unreadCount);
+      lastCountRef.current = unreadCount;
     } catch {
       // Silently fail
     }

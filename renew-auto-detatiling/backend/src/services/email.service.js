@@ -61,9 +61,14 @@ async function sendEmail(to, subject, html) {
     console.log(`Email sent: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error("Email error:", error.message);
+    console.error("CRITICAL EMAIL ERROR:", error);
     console.log(`[EMAIL FALLBACK] To: ${to}, Subject: ${subject}`);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error.message,
+      code: error.code,
+      command: error.command
+    };
   }
 }
 

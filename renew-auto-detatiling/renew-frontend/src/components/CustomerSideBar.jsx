@@ -1,6 +1,8 @@
 import { useNavigate } from "react-router-dom";
-import { useContext } from "react";
+import { useContext, useEffect, useState, useCallback, useRef } from "react";
 import { AuthContext } from "../context/AuthContext";
+import API from "../api/axios";
+import toast from "react-hot-toast";
 import { confirmAction } from "./ConfirmModal";
 import { 
   LayoutDashboard, 
@@ -11,7 +13,7 @@ import {
   LogOut 
 } from "lucide-react";
 
-const NavItem = ({ label, route, name, active, navigate, icon: Icon }) => {
+const NavItem = ({ label, route, name, active, navigate, icon: Icon, notifCount }) => {
   const isActive = active === name;
   return (
     <div
@@ -32,6 +34,20 @@ const NavItem = ({ label, route, name, active, navigate, icon: Icon }) => {
     >
       {Icon && <Icon size={20} />}
       <span style={{ fontSize: "14px" }}>{label}</span>
+      {name === "notifications" && notifCount > 0 && (
+        <span style={{
+          position: "absolute",
+          right: "16px",
+          top: "50%",
+          transform: "translateY(-50%)",
+          background: "var(--accent-red)",
+          color: "#fff",
+          borderRadius: "10px",
+          padding: "2px 8px",
+          fontSize: "10px",
+          fontWeight: "bold"
+        }}>{notifCount}</span>
+      )}
       {isActive && (
         <div style={{
           position: "absolute",
@@ -50,6 +66,43 @@ const NavItem = ({ label, route, name, active, navigate, icon: Icon }) => {
 const CustomerSidebar = ({ active }) => {
   const navigate = useNavigate();
   const { logout: contextLogout } = useContext(AuthContext);
+  const [notifCount, setNotifCount] = useState(0);
+  const lastCountRef = useRef(0);
+
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await API.get("/notifications");
+      const list = res.data?.notifications || res.data || [];
+      const unread = list.filter(n => !n.isRead);
+      const unreadCount = unread.length;
+      
+      if (unreadCount > lastCountRef.current) {
+        const latest = unread[0];
+        if (latest) {
+          toast(latest.title || "New Notification", {
+            icon: "🔔",
+            style: {
+              borderRadius: "10px",
+              background: "var(--card-bg)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border-color)",
+            }
+          });
+        }
+      }
+      
+      setNotifCount(unreadCount);
+      lastCountRef.current = unreadCount;
+    } catch {
+      // Silently fail
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 5000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
 
   const logout = async () => {
     const confirmed = await confirmAction({
@@ -94,10 +147,10 @@ const CustomerSidebar = ({ active }) => {
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        <NavItem icon={LayoutDashboard} label="Dashboard" route="/customer" name="dashboard" active={active} navigate={navigate} />
-        <NavItem icon={CalendarPlus} label="Book Appointment" route="/customer/book" name="book" active={active} navigate={navigate} />
-        <NavItem icon={History} label="My Bookings" route="/customer/bookings" name="bookings" active={active} navigate={navigate} />
-        <NavItem icon={Bell} label="Notifications" route="/customer/notifications" name="notifications" active={active} navigate={navigate} />
+        <NavItem icon={LayoutDashboard} label="Dashboard" route="/customer" name="dashboard" active={active} navigate={navigate} notifCount={0} />
+        <NavItem icon={CalendarPlus} label="Book Appointment" route="/customer/book" name="book" active={active} navigate={navigate} notifCount={0} />
+        <NavItem icon={History} label="My Bookings" route="/customer/bookings" name="bookings" active={active} navigate={navigate} notifCount={0} />
+        <NavItem icon={Bell} label="Notifications" route="/customer/notifications" name="notifications" active={active} navigate={navigate} notifCount={notifCount} />
       </div>
 
       <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "8px" }}>

@@ -4,6 +4,7 @@ import API from "../../api/axios";
 import AdminSideBar from "../../components/AdminSideBar";
 import BookingStatusBadge from "../../components/BookingStatusBadge";
 import PaymentStatusBadge from "../../components/PaymentStatusBadge";
+import ServiceStatusBadge from "../../components/ServiceStatusBadge";
 import { 
   Search, 
   Filter, 
@@ -60,7 +61,7 @@ const AdminBookings = () => {
             <div style={styles.searchBox}>
               <Search size={18} style={styles.searchIcon} />
               <input 
-                placeholder="Search name, ID or vehicle..." 
+                placeholder="Search name, ID, vehicle or status..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={styles.searchInput}
@@ -80,7 +81,7 @@ const AdminBookings = () => {
                   <th style={styles.th}>CUSTOMER</th>
                   <th style={styles.th}>VEHICLE</th>
                   <th style={styles.th}>DATE & TIME</th>
-                  <th style={styles.th}>STATUS</th>
+                  <th style={styles.th}>SERVICE STATUS</th>
                   <th style={styles.th}>PAYMENT</th>
                   <th style={styles.th}>AMOUNT</th>
                   <th style={styles.th}>ACTIONS</th>
@@ -114,7 +115,7 @@ const AdminBookings = () => {
                       </div>
                     </td>
                     <td style={styles.td}>
-                      <BookingStatusBadge status={b.status} />
+                       <ServiceStatusBadge status={b.serviceStatus} />
                     </td>
                     <td style={styles.td}>
                       <PaymentStatusBadge status={b.paymentStatus} />

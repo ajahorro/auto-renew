@@ -37,6 +37,24 @@ async function normalizeLegacyBookingData() {
         AND "status"::text != 'CANCELLED'
         AND "status"::text != 'COMPLETED'
       `
+    },
+    {
+      label: "sync serviceStatus ONGOING",
+      query: `
+        UPDATE "Booking"
+        SET "serviceStatus" = 'ONGOING'::"ServiceStatus"
+        WHERE "status"::text = 'ONGOING'
+        AND "serviceStatus" != 'ONGOING'
+      `
+    },
+    {
+      label: "sync serviceStatus COMPLETED",
+      query: `
+        UPDATE "Booking"
+        SET "serviceStatus" = 'COMPLETED'::"ServiceStatus"
+        WHERE "status"::text = 'COMPLETED'
+        AND "serviceStatus" != 'COMPLETED'
+      `
     }
   ];
 

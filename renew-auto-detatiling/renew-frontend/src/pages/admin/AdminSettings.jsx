@@ -33,6 +33,13 @@ const AdminSettings = () => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  
+  // Email change states
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [emailStep, setEmailStep] = useState(1); // 1: Input Email, 2: OTP
 
   useEffect(() => {
     loadData();
@@ -84,6 +91,47 @@ const AdminSettings = () => {
     }
   };
 
+  const requestEmailChange = async () => {
+    if (!newEmail || !newEmail.includes("@")) {
+      toast.error("Enter a valid email");
+      return;
+    }
+    setSaving(true);
+    try {
+      await API.post("/auth/send-email-otp", { email: newEmail });
+      toast.success("OTP sent to your new email");
+      setOtpSent(true);
+      setEmailStep(2);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send OTP");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const verifyEmailChange = async () => {
+    if (!otp) {
+      toast.error("Enter OTP");
+      return;
+    }
+    setSaving(true);
+    try {
+      await API.post("/auth/verify-email-otp", { email: newEmail, otp });
+      toast.success("Email updated successfully");
+      setProfile(p => ({ ...p, email: newEmail }));
+      setIsChangingEmail(false);
+      setOtpSent(false);
+      setEmailStep(1);
+      setNewEmail("");
+      setOtp("");
+      loadData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Verification failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const changePassword = async () => {
     if (!currentPassword || !newPassword) {
       toast.error("Fill both password fields");
@@ -129,7 +177,7 @@ const AdminSettings = () => {
     }
     setSaving(true);
     try {
-      await API.post("/admin/users", newStaff);
+      await API.post("/users", newStaff);
       toast.success("Staff account created");
       setShowAddModal(false);
       setNewStaff({ email: "", password: "", fullName: "", role: "STAFF" });
@@ -144,7 +192,7 @@ const AdminSettings = () => {
   const toggleUserStatus = async (userId, currentStatus) => {
     const action = currentStatus ? "deactivate" : "activate";
     try {
-      await API.patch(`/admin/users/${userId}/${action}`);
+      await API.patch(`/users/${userId}/${action}`);
       toast.success(`User ${action}d`);
       loadData();
     } catch {
@@ -218,18 +266,74 @@ const AdminSettings = () => {
                     />
                   </div>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Email</label>
-                    <input
-                      placeholder="Email"
-                      value={profile.email}
-                      disabled
-                      style={{...styles.input, opacity: 0.5, cursor: "not-allowed"}}
-                    />
+                    <label style={styles.label}>Email Address</label>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <input
+                        placeholder="Email"
+                        value={isChangingEmail ? newEmail : profile.email}
+                        onChange={(e) => isChangingEmail && setNewEmail(e.target.value)}
+                        disabled={!isChangingEmail || emailStep === 2}
+                        style={{
+                          ...styles.input, 
+                          flex: 1,
+                          opacity: (!isChangingEmail || emailStep === 2) ? 0.7 : 1,
+                          cursor: (!isChangingEmail || emailStep === 2) ? "not-allowed" : "text"
+                        }}
+                      />
+                      {!isChangingEmail ? (
+                        <button 
+                          style={{...styles.secondaryBtn, width: "auto", padding: "0 15px"}}
+                          onClick={() => setIsChangingEmail(true)}
+                        >
+                          Change
+                        </button>
+                      ) : (
+                        <button 
+                          style={{...styles.dangerBtn, width: "auto", padding: "0 15px", background: "#64748b"}}
+                          onClick={() => {
+                            setIsChangingEmail(false);
+                            setEmailStep(1);
+                            setOtpSent(false);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <button style={styles.primaryBtn} onClick={saveProfile} disabled={saving}>
-                  {saving ? "Saving..." : "Save Profile"}
-                </button>
+
+                {isChangingEmail && emailStep === 2 && (
+                  <div style={{...styles.formGroup, marginTop: "20px"}}>
+                    <label style={styles.label}>Enter OTP sent to {newEmail}</label>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <input
+                        placeholder="6-digit OTP"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value)}
+                        style={{...styles.input, flex: 1}}
+                        maxLength={6}
+                      />
+                      <button 
+                        style={{...styles.primaryBtn, width: "auto", padding: "0 20px"}}
+                        onClick={verifyEmailChange}
+                        disabled={saving}
+                      >
+                        Verify & Update
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!isChangingEmail ? (
+                  <button style={styles.primaryBtn} onClick={saveProfile} disabled={saving}>
+                    {saving ? "Saving..." : "Save Profile"}
+                  </button>
+                ) : emailStep === 1 && (
+                  <button style={styles.primaryBtn} onClick={requestEmailChange} disabled={saving}>
+                    {saving ? "Sending OTP..." : "Send Verification OTP"}
+                  </button>
+                )}
 
                 <div style={styles.divider} />
                 <h2 style={styles.sectionHeader}>Change Password</h2>
@@ -424,13 +528,13 @@ const AdminSettings = () => {
                             </td>
                             <td style={styles.tableCell}>
                               <button 
-                                style={{...styles.actionBtn, background: "#ef4444"}}
-                                onClick={() => {
-                                  setDeletingUser(user);
-                                  setShowDeleteModal(true);
+                                style={{
+                                  ...styles.actionBtn,
+                                  background: user.isActive ? "#ef4444" : "#22c55e"
                                 }}
+                                onClick={() => toggleUserStatus(user.id, user.isActive)}
                               >
-                                Delete Account
+                                {user.isActive ? "Deactivate" : "Activate"}
                               </button>
                             </td>
                           </tr>
@@ -589,6 +693,55 @@ const AdminSettings = () => {
                         <option key={n} value={n}>{n} services</option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                <div style={styles.divider} />
+                <h2 style={styles.sectionHeader}>Payment Rules</h2>
+                <div style={styles.formGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Downpayment Threshold (₱)</label>
+                    <input
+                      type="number"
+                      value={businessSettings.downpaymentThreshold}
+                      onChange={(e) => setBusinessSettings(s => ({ ...s, downpaymentThreshold: parseFloat(e.target.value) }))}
+                      style={styles.input}
+                      placeholder="5000"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>Downpayment Percentage (0.0 - 1.0)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={businessSettings.downpaymentPercentage}
+                      onChange={(e) => setBusinessSettings(s => ({ ...s, downpaymentPercentage: parseFloat(e.target.value) }))}
+                      style={styles.input}
+                      placeholder="0.5"
+                    />
+                  </div>
+                </div>
+
+                <div style={styles.formGrid}>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>GCash Name</label>
+                    <input
+                      type="text"
+                      value={businessSettings.gcashName || ""}
+                      onChange={(e) => setBusinessSettings(s => ({ ...s, gcashName: e.target.value }))}
+                      style={styles.input}
+                      placeholder="Business GCash Name"
+                    />
+                  </div>
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>GCash Number</label>
+                    <input
+                      type="text"
+                      value={businessSettings.gcashNumber || ""}
+                      onChange={(e) => setBusinessSettings(s => ({ ...s, gcashNumber: e.target.value }))}
+                      style={styles.input}
+                      placeholder="09XXXXXXXXX"
+                    />
                   </div>
                 </div>
 

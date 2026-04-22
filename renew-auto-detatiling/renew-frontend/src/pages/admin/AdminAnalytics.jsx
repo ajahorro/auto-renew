@@ -8,7 +8,8 @@ import {
   DollarSign, 
   Smartphone, 
   Banknote,
-  TrendingUp
+  TrendingUp,
+  Sparkles
 } from "lucide-react";
 import "../../App.css";
 
@@ -86,16 +87,30 @@ const AdminAnalytics = () => {
       <div style={styles.pageWrapper}>
         <div style={styles.header}>
           <h1 style={styles.pageTitle}>Analytics Dashboard</h1>
-          <select 
-            style={styles.dateSelect}
-            value={dateRange}
-            onChange={(e) => setDateRange(e.target.value)}
-          >
-            <option value="today">Today</option>
-            <option value="week">This Week</option>
-            <option value="month">This Month</option>
-            <option value="all">All Time</option>
-          </select>
+          <div style={styles.headerRight}>
+            <div style={styles.aiForecastBadge}>
+              <Sparkles size={16} />
+              <span>AI Revenue Forecast: <strong>{formatCurrency(analytics.forecast?.projectedRevenue)}</strong></span>
+              <span style={{ 
+                marginLeft: "8px", 
+                color: (analytics.forecast?.projectedGrowth >= 0 ? "var(--accent-green)" : "var(--accent-red)"),
+                fontSize: "11px",
+                fontWeight: "700"
+              }}>
+                {analytics.forecast?.projectedGrowth >= 0 ? "+" : ""}{analytics.forecast?.projectedGrowth}%
+              </span>
+            </div>
+            <select 
+              style={styles.dateSelect}
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+            >
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
+            </select>
+          </div>
         </div>
 
         <div style={styles.statsGrid}>
@@ -335,7 +350,19 @@ const AdminAnalytics = () => {
 
 const styles = {
   pageWrapper: { padding: "24px", maxWidth: "1400px", margin: "0 auto" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", flexWrap: "wrap", gap: "16px" },
+  headerRight: { display: "flex", alignItems: "center", gap: "16px" },
+  aiForecastBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 16px",
+    background: "rgba(99, 102, 241, 0.1)",
+    border: "1px solid rgba(99, 102, 241, 0.2)",
+    borderRadius: "100px",
+    color: "var(--accent-blue)",
+    fontSize: "13px"
+  },
   pageTitle: { fontSize: "28px", fontWeight: "700", color: "var(--text-primary)", margin: 0 },
   dateSelect: { padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: "14px", cursor: "pointer" },
   loadingContainer: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px", gap: "16px" },

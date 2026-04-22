@@ -1,4 +1,4 @@
-import { Clock, Play, CheckCircle2, AlertCircle } from "lucide-react";
+import { Clock, Play, CheckCircle2, AlertCircle, XCircle } from "lucide-react";
 
 const ServiceStatusBadge = ({ status }) => {
   const configs = {
@@ -11,13 +11,19 @@ const ServiceStatusBadge = ({ status }) => {
     ONGOING: {
       icon: <Play size={12} />,
       label: "Ongoing",
-      color: "#f59e0b",
-      textColor: "#000"
+      color: "#3b82f6",
+      textColor: "#fff"
     },
     COMPLETED: {
       icon: <CheckCircle2 size={12} />,
       label: "Completed",
       color: "#22c55e",
+      textColor: "#fff"
+    },
+    CANCELLED: {
+      icon: <XCircle size={12} />,
+      label: "Cancelled",
+      color: "#ef4444",
       textColor: "#fff"
     }
   };

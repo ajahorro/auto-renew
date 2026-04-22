@@ -164,11 +164,7 @@ const AdminBookingView = () => {
             <h1 style={S.title}>Booking #{String(booking.id).padStart(4, "0")}</h1>
             <div style={S.statusRow}>
               <div style={S.statusGroup}>
-                <span style={S.statusLabel}>Booking</span>
-                <BookingStatusBadge status={booking.status} />
-              </div>
-              <div style={S.statusGroup}>
-                <span style={S.statusLabel}>Service</span>
+                <span style={S.statusLabel}>Service Status</span>
                 <ServiceStatusBadge status={booking.serviceStatus} />
               </div>
               <div style={S.statusGroup}>

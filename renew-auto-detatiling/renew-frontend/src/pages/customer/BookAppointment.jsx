@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import API from "../../api/axios"; 
 import "react-datepicker/dist/react-datepicker.css";
 import "../../App.css";
+import SmartServiceAssistant from "../../components/SmartServiceAssistant";
 
 const formatLocalDate = (value) => {
   if (!value) return "";
@@ -216,6 +217,21 @@ const BookAppointment = () => {
     }
   };
 
+  const handleAIRecommendation = (recommendedList) => {
+    if (isBookingLocked) return;
+    
+    // Clear current and apply new
+    const toAdd = recommendedList.map(s => ({
+      ...s,
+      price: Number(s.price)
+    })).slice(0, maxServices);
+    
+    setSelectedServices(toAdd);
+    
+    // Auto-fill vehicle type if it's in the recommendation logic (optional)
+    toast.success("AI recommendations applied!");
+  };
+
   const totalAmount = selectedServices.reduce((sum, s) => sum + Number(s.price || 0), 0);
   const totalDuration = selectedServices.reduce((sum, s) => sum + Number(s.durationMin || 0), 0);
 
@@ -423,7 +439,10 @@ const BookAppointment = () => {
   const renderStep1 = () => (
     <div style={styles.grid}>
       <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Select Services</h2>
+        <div style={styles.cardHeaderWithAssistant}>
+          <h2 style={styles.cardTitle}>Select Services</h2>
+          <SmartServiceAssistant services={services} onRecommend={handleAIRecommendation} />
+        </div>
         {renderServiceSection("Exterior Services", services.exterior)}
         {renderServiceSection("Interior Services", services.interior)}
         {renderServiceSection("Specialized Services", services.specialized)}
@@ -798,6 +817,14 @@ const styles = {
   stepCircle: { width: "40px", height: "40px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "700", background: "var(--bg-tertiary)", color: "var(--text-secondary)", border: "2px solid var(--border-color)" },
   stepLabel: { fontSize: "13px", fontWeight: "600", color: "var(--text-secondary)" },
   progressLine: { width: "100px", height: "2px", background: "var(--border-color)", margin: "0 10px", marginBottom: "25px" },
+  cardHeaderWithAssistant: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "20px",
+    flexWrap: "wrap",
+    gap: "10px"
+  },
 
   grid: { display: "grid", gridTemplateColumns: "1.8fr 1.2fr", gap: "25px", alignItems: "start" },
   card: { background: "var(--card-bg)", padding: "25px", borderRadius: "16px", border: "1px solid var(--border-color)" },

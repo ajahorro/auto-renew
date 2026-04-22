@@ -18,7 +18,9 @@ const AdminDashboard = () => {
   const [bookings, setBookings] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
   const [statusCounts, setStatusCounts] = useState({
-    PENDING: 0, CONFIRMED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0
+    booking: { CONFIRMED: 0, CANCELLED: 0, COMPLETED: 0 },
+    service: { NOT_STARTED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0 },
+    payment: { PENDING: 0, DOWNPAYMENT_PAID: 0, COMPLETED: 0, REFUNDED: 0, CANCELLED: 0 }
   });
 
   useEffect(() => {
@@ -29,18 +31,31 @@ const AdminDashboard = () => {
           const { counts, finances } = analyticsRes.data.analytics || {};
           setAnalytics({
             totalBookings: counts?.total || 0,
-            completedBookings: counts?.completed || 0,
+            completedBookings: counts?.booking?.COMPLETED || counts?.completed || 0,
             totalRevenue: finances?.totalRevenue || 0,
             pendingReceivables: finances?.pendingRevenue || 0
           });
-          // Update status counts from analytics - include ALL statuses
-          if (counts) {
+          
+          if (counts && counts.booking) {
             setStatusCounts({
-              PENDING: (counts.pending || 0) + (counts.pendingPayment || 0),
-              CONFIRMED: (counts.confirmed || 0) + (counts.scheduled || 0),
-              ONGOING: counts.ongoing || 0,
-              COMPLETED: counts.completed || 0,
-              CANCELLED: counts.cancelled || 0
+              booking: {
+                CONFIRMED: (counts.booking.CONFIRMED || 0) + (counts.booking.SCHEDULED || 0),
+                CANCELLED: counts.booking.CANCELLED || 0,
+                COMPLETED: counts.booking.COMPLETED || 0
+              },
+              service: {
+                NOT_STARTED: counts.service?.NOT_STARTED || 0,
+                ONGOING: counts.service?.ONGOING || 0,
+                COMPLETED: counts.service?.COMPLETED || 0,
+                CANCELLED: counts.booking.CANCELLED || 0
+              },
+              payment: {
+                PENDING: counts.payment?.PENDING || 0,
+                DOWNPAYMENT_PAID: counts.payment?.PARTIALLY_PAID || 0,
+                COMPLETED: counts.payment?.PAID || counts.payment?.COMPLETED || 0,
+                REFUNDED: 0,
+                CANCELLED: counts.booking.CANCELLED || 0
+              }
             });
           }
         }
@@ -52,27 +67,9 @@ const AdminDashboard = () => {
         
         setBookings(list.slice(0, 5));
 
-        // Count all statuses from actual bookings
-        const statusCounts = { PENDING: 0, SCHEDULED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0, DRAFT: 0, CONFIRMED: 0 };
-        const unassignedList = [];
-
-        list.forEach(b => {
-          const status = b.status?.toUpperCase();
-          if (statusCounts[status] !== undefined) {
-            statusCounts[status]++;
-          }
-          if (!b.assignedStaffId && !["CANCELLED", "COMPLETED"].includes(b.status)) {
-            unassignedList.push(b);
-          }
-        });
-
-        setStatusCounts({
-          PENDING: statusCounts.PENDING,
-          CONFIRMED: statusCounts.CONFIRMED + statusCounts.SCHEDULED,
-          ONGOING: statusCounts.ONGOING,
-          COMPLETED: statusCounts.COMPLETED,
-          CANCELLED: statusCounts.CANCELLED
-        });
+        const unassignedList = list.filter(b => 
+          !b.assignedStaffId && !["CANCELLED", "COMPLETED"].includes(b.status)
+        );
         setUnassigned(unassignedList.slice(0, 5));
       } catch (err) {
         console.error("Dashboard data fetch error:", err);
@@ -89,11 +86,12 @@ const AdminDashboard = () => {
       case "ONGOING": return "#a855f7";
       case "COMPLETED": return "#22c55e";
       case "CANCELLED": return "#ef4444";
+      case "DOWNPAYMENT_PAID": return "#0ea5e9";
+      case "NOT_STARTED": return "#94a3b8";
       default: return "#64748b";
     }
   };
 
-  // Navigate to bookings page with filter
   const navigateToBookings = (status = "") => {
     if (status) {
       navigate(`/admin/bookings?status=${status}`);
@@ -112,7 +110,6 @@ const AdminDashboard = () => {
           <p style={{ opacity: 0.6, color: 'var(--text-secondary)' }}>Here is what's happening at RENEW today.</p>
         </div>
 
-        {/* METRICS - Now clickable */}
         <div style={styles.grid}>
           <div style={styles.clickableCard} onClick={() => navigateToBookings()}>
             <p style={styles.cardLabel}>Total Bookings</p>
@@ -140,29 +137,50 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* STATUS COUNTERS - Now clickable */}
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>Operations Status</h2>
-          <div style={styles.statusGrid}>
-             {Object.entries(statusCounts).map(([status, count]) => (
-               <div 
-                 key={status} 
-                 style={{ 
-                   ...styles.clickableStatusCard, 
-                   borderLeft: `4px solid ${getStatusColor(status)}`,
-                   cursor: "pointer"
-                 }}
-                 onClick={() => navigateToBookings(status)}
-               >
-                 <p style={styles.statusLabel}>{status}</p>
-                 <h3 style={styles.statusValue}>{count}</h3>
-                 <p style={styles.statusHint}>Click to view</p>
-               </div>
-             ))}
+          <div style={styles.categorizedGrid}>
+            <div style={styles.categoryColumn}>
+              <h3 style={styles.categoryTitle}>Bookings</h3>
+              <div style={styles.statusStack}>
+                {Object.entries(statusCounts.booking).map(([status, count]) => (
+                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings(status)}>
+                    <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
+                    <span style={styles.statusName}>{status.replace("_", " ")}</span>
+                    <span style={styles.statusCount}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.categoryColumn}>
+              <h3 style={styles.categoryTitle}>Services</h3>
+              <div style={styles.statusStack}>
+                {Object.entries(statusCounts.service).map(([status, count]) => (
+                  <div key={status} style={styles.statusRowItem}>
+                    <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
+                    <span style={styles.statusName}>{status.replace("_", " ")}</span>
+                    <span style={styles.statusCount}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={styles.categoryColumn}>
+              <h3 style={styles.categoryTitle}>Payments</h3>
+              <div style={styles.statusStack}>
+                {Object.entries(statusCounts.payment).map(([status, count]) => (
+                  <div key={status} style={styles.statusRowItem}>
+                    <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
+                    <span style={styles.statusName}>{status.replace("_", " ")}</span>
+                    <span style={styles.statusCount}>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ACTIVITY & ALERTS */}
         <div style={styles.bottomLayout}>
           <div style={styles.activitySection}>
             <div style={styles.sectionHeader}>
@@ -248,7 +266,6 @@ const styles = {
     cursor: "pointer",
     transition: "0.2s"
   },
-  card: { background: "var(--card-bg)", padding: "24px", borderRadius: "16px", border: "1px solid var(--border-color)" },
   cardLabel: { opacity: 0.6, fontSize: "14px", marginBottom: "8px", color: "var(--text-secondary)" },
   cardValue: { fontSize: "28px", fontWeight: "700", color: "var(--text-primary)" },
   cardHint: { fontSize: "11px", opacity: 0.4, marginTop: "4px" },
@@ -264,17 +281,56 @@ const styles = {
     cursor: "pointer",
     fontSize: "13px"
   },
-  statusGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "15px" },
-  clickableStatusCard: { 
-    background: "var(--card-bg)", 
-    padding: "16px", 
-    borderRadius: "12px",
-    transition: "0.2s"
+  categorizedGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "24px" },
+  categoryColumn: {
+    background: "var(--card-bg)",
+    borderRadius: "16px",
+    padding: "20px",
+    border: "1px solid var(--border-color)"
   },
-  statusCard: { background: "var(--card-bg)", padding: "16px", borderRadius: "12px" },
-  statusLabel: { fontSize: "12px", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.5px", color: "var(--text-secondary)" },
-  statusValue: { fontSize: "22px", fontWeight: "600", color: "var(--text-primary)" },
-  statusHint: { fontSize: "10px", opacity: 0.3, marginTop: "2px" },
+  categoryTitle: {
+    fontSize: "14px",
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: "1px",
+    marginBottom: "16px",
+    color: "var(--text-secondary)",
+    borderBottom: "1px solid var(--border-color)",
+    paddingBottom: "10px"
+  },
+  statusStack: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px"
+  },
+  statusRowItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "8px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    transition: "0.2s",
+    "&:hover": {
+      background: "var(--bg-tertiary)"
+    }
+  },
+  statusIndicator: {
+    width: "8px",
+    height: "8px",
+    borderRadius: "50%"
+  },
+  statusName: {
+    fontSize: "14px",
+    fontWeight: "500",
+    color: "var(--text-primary)",
+    flex: 1
+  },
+  statusCount: {
+    fontSize: "14px",
+    fontWeight: "700",
+    color: "var(--text-primary)"
+  },
   bottomLayout: { display: "grid", gridTemplateColumns: "2fr 1fr", gap: "30px" },
   activitySection: { flex: 2 },
   tableContainer: { background: "var(--card-bg)", borderRadius: "16px", padding: "10px", border: "1px solid var(--border-color)" },
