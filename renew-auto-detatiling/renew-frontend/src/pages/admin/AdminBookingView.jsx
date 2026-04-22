@@ -41,7 +41,7 @@ const AdminBookingView = () => {
     try {
       const [bookingRes, staffRes] = await Promise.all([
         API.get(`/bookings/${id}`),
-        API.get("/admin/users?role=STAFF")
+        API.get("/users?role=STAFF")
       ]);
       setBooking(bookingRes.data.booking || bookingRes.data);
       setStaff(staffRes.data.users || staffRes.data || []);

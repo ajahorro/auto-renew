@@ -1431,7 +1431,7 @@ const getAdminAnalytics = async (req, res) => {
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    // 1. Basic Counts (Parallelized)
+    // 1. Basic Counts
     const [
       totalCount,
       statusCounts,
@@ -1442,100 +1442,77 @@ const getAdminAnalytics = async (req, res) => {
       monthCount
     ] = await Promise.all([
       prisma.booking.count(),
-      prisma.booking.groupBy({
-        by: ['status'],
-        _count: true
-      }),
-      prisma.booking.groupBy({
-        by: ['serviceStatus'],
-        _count: true
-      }),
-      prisma.booking.groupBy({
-        by: ['paymentStatus'],
-        _count: true
-      }),
+      prisma.booking.groupBy({ by: ['status'], _count: true }),
+      prisma.booking.groupBy({ by: ['serviceStatus'], _count: true }),
+      prisma.booking.groupBy({ by: ['paymentStatus'], _count: true }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfToday } } }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfWeek } } }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfMonth } } })
     ]);
 
-    // Map status counts for easy access
     const counts = {
-      booking: { PENDING: 0, SCHEDULED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0, CONFIRMED: 0 },
-      service: { NOT_STARTED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0 },
-      payment: { PENDING: 0, FOR_VERIFICATION: 0, PARTIALLY_PAID: 0, PAID: 0, REJECTED: 0, APPROVED: 0, VERIFIED: 0, COMPLETED: 0 }
+      total: totalCount,
+      booking: { SCHEDULED: 0, ONGOING: 0, COMPLETED: 0, CANCELLED: 0 },
+      service: {},
+      payment: {}
     };
 
     statusCounts.forEach(c => {
-      if (counts.booking[c.status] !== undefined) counts.booking[c.status] = c._count;
+      if (["PENDING", "CONFIRMED", "SCHEDULED"].includes(c.status)) {
+        counts.booking.SCHEDULED += c._count;
+      } else {
+        counts.booking[c.status] = (counts.booking[c.status] || 0) + c._count;
+      }
     });
-    serviceStatusCounts.forEach(c => {
-      if (counts.service[c.serviceStatus] !== undefined) counts.service[c.serviceStatus] = c._count;
-    });
-    paymentStatusCounts.forEach(c => {
-      if (counts.payment[c.paymentStatus] !== undefined) counts.payment[c.paymentStatus] = c._count;
-    });
+    serviceStatusCounts.forEach(c => { counts.service[c.serviceStatus] = c._count; });
+    paymentStatusCounts.forEach(c => { counts.payment[c.paymentStatus] = c._count; });
 
-    // 2. Revenue Aggregations (Database-side)
-    const [
-      revenueData,
-      paymentMethodData,
-      unpaidData,
-      monthRevenueData
-    ] = await Promise.all([
-      prisma.payment.aggregate({
-        where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] } },
-        _sum: { amount: true }
-      }),
-      prisma.payment.groupBy({
-        where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] } },
-        by: ['method'],
-        _sum: { amount: true }
-      }),
-      prisma.booking.aggregate({
-        where: { status: { notIn: ["CANCELLED", "COMPLETED"] } },
-        _sum: { totalAmount: true, amountPaid: true }
-      }),
-      prisma.payment.aggregate({
-        where: { 
-          status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] },
-          createdAt: { gte: startOfMonth }
-        },
-        _sum: { amount: true }
-      })
+    ["SCHEDULED", "ONGOING", "COMPLETED", "CANCELLED"].forEach(s => { if (!counts.booking[s]) counts.booking[s] = 0; });
+    ["NOT_STARTED", "ONGOING", "COMPLETED"].forEach(s => { if (!counts.service[s]) counts.service[s] = 0; });
+    ["PENDING", "PARTIALLY_PAID", "PAID", "FOR_VERIFICATION", "REJECTED"].forEach(s => { if (!counts.payment[s]) counts.payment[s] = 0; });
+
+    // 2. Revenue Aggregations
+    const [revenueData, paymentMethodData, unpaidData, monthRevenueData] = await Promise.all([
+      prisma.payment.aggregate({ where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] } }, _sum: { amount: true } }),
+      prisma.payment.groupBy({ where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] } }, by: ['method'], _sum: { amount: true } }),
+      prisma.booking.aggregate({ where: { status: { notIn: ["CANCELLED", "COMPLETED"] } }, _sum: { totalAmount: true, amountPaid: true } }),
+      prisma.payment.aggregate({ where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] }, createdAt: { gte: startOfMonth } }, _sum: { amount: true } })
     ]);
 
     const totalRevenue = Number(revenueData._sum?.amount || 0);
     const monthRevenue = Number(monthRevenueData._sum?.amount || 0);
-    const gcashRevenue = paymentMethodData
-      .filter(p => p.method === "GCASH" || p.method === "GCASH_POST_SERVICE")
-      .reduce((sum, p) => sum + (Number(p._sum?.amount || 0)), 0);
-    const cashRevenue = paymentMethodData
-      .filter(p => p.method === "CASH")
-      .reduce((sum, p) => sum + (Number(p._sum?.amount || 0)), 0);
+    const gcashRevenue = paymentMethodData.filter(p => p.method.includes("GCASH")).reduce((sum, p) => sum + Number(p._sum?.amount || 0), 0);
+    const cashRevenue = paymentMethodData.filter(p => p.method === "CASH").reduce((sum, p) => sum + Number(p._sum?.amount || 0), 0);
+    const pendingRevenue = Number(unpaidData._sum?.totalAmount || 0) - Number(unpaidData._sum?.amountPaid || 0);
 
-    const pendingRevenue = (Number(unpaidData._sum?.totalAmount || 0)) - (Number(unpaidData._sum?.amountPaid || 0));
+    // 3. AI Insights
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const lastMonthRev = await prisma.payment.aggregate({ where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] }, createdAt: { gte: lastMonthStart, lte: lastMonthEnd } }, _sum: { amount: true } });
+    const lastMonthRevenue = Number(lastMonthRev._sum?.amount || 0);
+    const revenueGrowth = lastMonthRevenue > 0 ? Number((((monthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100).toFixed(1)) : 100;
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const currentDay = now.getDate();
+    const projectedRevenue = currentDay > 0 ? (monthRevenue / currentDay) * daysInMonth : 0;
+    const forecast = { projectedRevenue: Number(projectedRevenue.toFixed(2)), projectedGrowth: revenueGrowth, confidenceScore: 85 };
 
-    const revenuePerServiceMap = {};
+    // 4. Activity & Peak Hours
     const recentBookings = await prisma.booking.findMany({
       take: 100,
       orderBy: { createdAt: 'desc' },
-      include: { 
-        items: { select: { serviceNameAtBooking: true } },
-        payments: { where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] } }, select: { amount: true } }
-      }
+      include: { items: { select: { serviceNameAtBooking: true } }, payments: { where: { status: { in: ["APPROVED", "VERIFIED", "COMPLETED", "PAID"] } }, select: { amount: true } } }
     });
 
     const bookingsPerServiceMap = {};
+    const revenuePerServiceMap = {};
     const bookingsPerHour = {};
     recentBookings.forEach(booking => {
-      const bookingRevenue = booking.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+      const rev = booking.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
       const itemsCount = booking.items.length || 1;
-
       booking.items.forEach(item => {
-        const serviceName = item.serviceNameAtBooking || "Unknown";
-        bookingsPerServiceMap[serviceName] = (bookingsPerServiceMap[serviceName] || 0) + 1;
-        revenuePerServiceMap[serviceName] = (revenuePerServiceMap[serviceName] || 0) + (bookingRevenue / itemsCount);
+        const name = item.serviceNameAtBooking || "Unknown";
+        bookingsPerServiceMap[name] = (bookingsPerServiceMap[name] || 0) + 1;
+        revenuePerServiceMap[name] = (revenuePerServiceMap[name] || 0) + (rev / itemsCount);
       });
       if (booking.appointmentStart) {
         const hour = new Date(booking.appointmentStart).getHours();
@@ -1543,159 +1520,57 @@ const getAdminAnalytics = async (req, res) => {
       }
     });
 
-    const bookingsPerService = Object.entries(bookingsPerServiceMap)
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count);
+    const bookingsPerService = Object.entries(bookingsPerServiceMap).map(([name, count]) => ({ name, count })).sort((a,b) => b.count - a.count);
+    const revenuePerService = Object.entries(revenuePerServiceMap).map(([name, revenue]) => ({ name, revenue: Number(revenue.toFixed(2)) })).sort((a,b) => b.revenue - a.revenue);
+    const peakHours = Object.entries(bookingsPerHour).sort((a,b) => b[1] - a[1]).slice(0, 3).map(([hour, count]) => ({ hour: parseInt(hour), count, label: `${hour}:00` }));
 
-    const revenuePerService = Object.entries(revenuePerServiceMap)
-      .map(([name, revenue]) => ({ name, revenue: Number(revenue.toFixed(2)) }))
-      .sort((a, b) => b.revenue - a.revenue);
-
-    const peakHours = Object.entries(bookingsPerHour)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([hour, count]) => ({
-        hour: parseInt(hour),
-        count,
-        label: `${hour}:00`
-      }));
-
-    const monthDistribution = await prisma.booking.findMany({
-      where: { appointmentStart: { gte: startOfMonth } },
-      select: { appointmentStart: true }
-    });
-
-    const bookingsPerDay = {};
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    for (let i = 1; i <= daysInMonth; i++) {
-      bookingsPerDay[i] = 0;
-    }
-    monthDistribution.forEach(booking => {
-      if (booking.appointmentStart) {
-        const date = new Date(booking.appointmentStart);
-        const day = date.getDate();
-        bookingsPerDay[day] = (bookingsPerDay[day] || 0) + 1;
-      }
-    });
-
-    const totalDaysInMonth = Object.values(bookingsPerDay).filter(v => v > 0).length;
-    const avgBookingsPerDay = totalDaysInMonth > 0 
-      ? Number((monthCount / totalDaysInMonth).toFixed(1)) 
-      : 0;
-
-    const cancellationRate = totalCount > 0 
-      ? Number(((counts.CANCELLED / totalCount) * 100).toFixed(1)) 
-      : 0;
-
-    const staffBookings = await prisma.booking.groupBy({
-      by: ["assignedStaffId"],
-      where: { assignedStaffId: { not: null } },
-      _count: { id: true }
-    });
-
-    const [staffDetails, staffCompletedCounts] = await Promise.all([
-      prisma.user.findMany({
-        where: { id: { in: staffBookings.map(sb => sb.assignedStaffId) } },
-        select: { id: true, fullName: true }
-      }),
-      prisma.booking.groupBy({
-        by: ["assignedStaffId"],
-        where: { 
-          assignedStaffId: { in: staffBookings.map(sb => sb.assignedStaffId) },
-          status: "COMPLETED"
-        },
-        _count: { id: true }
-      })
-    ]);
-
-    const staffMap = {};
-    staffDetails.forEach(s => staffMap[s.id] = s.fullName);
+    // 5. Staff Analytics
+    const staffBookings = await prisma.booking.groupBy({ by: ["assignedStaffId"], where: { assignedStaffId: { not: null } }, _count: { id: true } });
+    const staffDetails = await prisma.user.findMany({ where: { id: { in: staffBookings.map(sb => sb.assignedStaffId) } }, select: { id: true, fullName: true } });
+    const staffCompleted = await prisma.booking.groupBy({ by: ["assignedStaffId"], where: { assignedStaffId: { in: staffBookings.map(sb => sb.assignedStaffId) }, status: "COMPLETED" }, _count: { id: true } });
     
-    const completedMap = {};
-    staffCompletedCounts.forEach(sc => completedMap[sc.assignedStaffId] = sc._count.id);
+    const staffMap = {}; staffDetails.forEach(s => staffMap[s.id] = s.fullName);
+    const completedMap = {}; staffCompleted.forEach(sc => completedMap[sc.assignedStaffId] = sc._count.id);
 
-    const staffWithNames = staffBookings.map(sb => {
+    const staffAnalytics = staffBookings.map(sb => {
       const total = sb._count.id;
       const completed = completedMap[sb.assignedStaffId] || 0;
-      return {
-        id: sb.assignedStaffId,
-        name: staffMap[sb.assignedStaffId] || "Unknown",
-        totalBookings: total,
-        completedBookings: completed,
-        completionRate: total > 0 ? Number(((completed / total) * 100).toFixed(1)) : 0
-      };
+      return { id: sb.assignedStaffId, name: staffMap[sb.assignedStaffId] || "Unknown", totalBookings: total, completedBookings: completed, completionRate: total > 0 ? Number(((completed / total) * 100).toFixed(1)) : 0 };
     });
 
-      };
-    });
-
-    // AI Revenue Forecast Logic
-    const today = new Date();
-    const currentDay = today.getDate();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    
-    const projectedRevenue = currentDay > 0 
-      ? (monthRevenue / currentDay) * daysInMonth 
-      : 0;
-    
-    // Growth compared to current total (this is just an example, could compare to prev month)
-    const projectedGrowth = totalRevenue > 0 
-      ? ((projectedRevenue - (totalRevenue / 12)) / (totalRevenue / 12) * 100).toFixed(1)
-      : 0;
-
-    const forecast = {
-      projectedRevenue: Number(projectedRevenue.toFixed(2)),
-      projectedGrowth: Number(projectedGrowth),
-      confidenceScore: currentDay > 20 ? 90 : currentDay > 10 ? 75 : 50
-    };
+    const smartInsights = [
+      `Revenue is ${revenueGrowth >= 0 ? "up" : "down"} by ${Math.abs(revenueGrowth)}% vs last month.`,
+      bookingsPerService.length > 0 ? `"${bookingsPerService[0].name}" is your top performing service.` : null,
+      peakHours.length > 0 ? `Busiest time is usually around ${peakHours[0].hour % 12 || 12}${peakHours[0].hour >= 12 ? "PM" : "AM"}.` : null
+    ].filter(Boolean);
 
     res.json({
       success: true,
       analytics: {
-        counts: {
-          total: totalCount,
+        counts: { 
+          total: totalCount, 
+          pending: counts.booking.SCHEDULED, 
+          ongoing: counts.booking.ONGOING, 
+          completed: counts.booking.COMPLETED, 
+          cancelled: counts.booking.CANCELLED,
           booking: counts.booking,
           service: counts.service,
-          payment: counts.payment,
-          // Legacy support (to avoid breaking current UI before update)
-          pending: counts.booking.PENDING,
-          scheduled: counts.booking.SCHEDULED,
-          ongoing: counts.booking.ONGOING,
-          completed: counts.booking.COMPLETED,
-          cancelled: counts.booking.CANCELLED,
+          payment: counts.payment
         },
-        forecast,
-        bookingTrends: {
-          today: todayCount,
-          thisWeek: weekCount,
-          thisMonth: monthCount
-        },
-        finances: {
-          totalRevenue,
-          gcashRevenue,
-          cashRevenue,
-          pendingRevenue,
-          paidBookings: counts.COMPLETED, // Approximation
-          unpaidBookings: totalCount - counts.COMPLETED // Approximation
-        },
-        operational: {
-          avgBookingsPerDay,
-          cancellationRate,
-          totalDaysTracked: totalDaysInMonth
-        },
-        peakHours,
+        bookingTrends: { today: todayCount, week: weekCount, month: monthCount },
+        finances: { totalRevenue, monthRevenue, gcashRevenue, cashRevenue, pendingRevenue, paidBookings: counts.payment.PAID || 0, unpaidBookings: counts.payment.PENDING || 0 },
         bookingsPerService,
         revenuePerService,
-        bookingsPerDay,
-        staffAnalytics: staffWithNames
+        peakHours,
+        operational: { avgBookingsPerDay: Number((monthCount / 30).toFixed(1)), cancellationRate: totalCount > 0 ? Number(((counts.booking.CANCELLED / totalCount) * 100).toFixed(1)) : 0, totalDaysTracked: 30 },
+        staffAnalytics,
+        forecast,
+        smartInsights
       }
     });
   } catch (error) {
-    console.error("GET_ADMIN_ANALYTICS ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch admin analytics",
-    });
+    console.error("ADMIN_ANALYTICS ERROR:", error);
+    res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 
@@ -2492,7 +2367,12 @@ const getBookings = async (req, res) => {
 
     let where = {};
     if (status) {
-      where.status = status;
+      const s = status.toUpperCase();
+      if (s === "SCHEDULED") {
+        where.status = { in: ["SCHEDULED", "CONFIRMED"] };
+      } else {
+        where.status = s;
+      }
     }
 
     if (role === "CUSTOMER") {
@@ -2965,20 +2845,36 @@ const getAdminBookings = async (req, res) => {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    let { status, serviceStatus, paymentStatus, page = 1, limit = 20 } = req.query;
+    let { status, serviceStatus, paymentStatus, search, page = 1, limit = 20 } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
     const skip = (page - 1) * limit;
 
     let where = {};
     if (status) {
-      where.status = status.toUpperCase();
+      const s = status.toUpperCase();
+      if (s === "SCHEDULED") {
+        where.status = { in: ["PENDING", "CONFIRMED", "SCHEDULED"] };
+      } else {
+        where.status = s;
+      }
     }
     if (serviceStatus) {
       where.serviceStatus = serviceStatus.toUpperCase();
     }
     if (paymentStatus) {
       where.paymentStatus = paymentStatus.toUpperCase();
+    }
+
+    if (search) {
+      const searchTerm = search.trim();
+      where.OR = [
+        { id: isNaN(Number(searchTerm)) ? undefined : Number(searchTerm) },
+        { customer: { fullName: { contains: searchTerm, mode: 'insensitive' } } },
+        { customer: { email: { contains: searchTerm, mode: 'insensitive' } } },
+        { vehicleType: { contains: searchTerm, mode: 'insensitive' } },
+        { plateNumber: { contains: searchTerm, mode: 'insensitive' } }
+      ].filter(Boolean);
     }
 
     const [totalCount, bookings] = await Promise.all([

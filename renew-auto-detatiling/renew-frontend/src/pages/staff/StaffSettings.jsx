@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import API from "../../api/axios";
 import StaffSidebar from "../../components/StaffSidebar";
+import API from "../../api/axios";
 import toast from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -16,9 +16,10 @@ const StaffSettings = () => {
   });
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
+  
   // Email change states
   const [isChangingEmail, setIsChangingEmail] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -27,21 +28,21 @@ const StaffSettings = () => {
   const [emailStep, setEmailStep] = useState(1); // 1: Input Email, 2: OTP
 
   useEffect(() => {
-    loadUser();
+    loadData();
   }, []);
 
-  const loadUser = async () => {
+  const loadData = async () => {
     try {
-      const res = await API.get("/me");
-      if (res.data.user) {
+      const profileRes = await API.get("/me");
+      if (profileRes.data.user) {
         setProfile({
-          fullName: res.data.user.fullName || "",
-          email: res.data.user.email || ""
+          fullName: profileRes.data.user.fullName || "",
+          email: profileRes.data.user.email || ""
         });
-        localStorage.setItem("user", JSON.stringify(res.data.user));
+        localStorage.setItem("user", JSON.stringify(profileRes.data.user));
       }
     } catch (err) {
-      console.log(err);
+      console.log("Load error:", err);
     } finally {
       setLoading(false);
     }
@@ -95,7 +96,7 @@ const StaffSettings = () => {
       setEmailStep(1);
       setNewEmail("");
       setOtp("");
-      loadUser();
+      loadData();
     } catch (err) {
       toast.error(err.response?.data?.message || "Verification failed");
     } finally {
@@ -139,9 +140,9 @@ const StaffSettings = () => {
 
   return (
     <div style={pageStyles.page}>
-      <StaffSidebar active="settings"/>
+      <StaffSidebar active="settings" />
       <div style={pageStyles.main}>
-        <h1 style={pageStyles.title}>Account Settings</h1>
+        <h1 style={pageStyles.title}>Settings</h1>
 
         <div style={styles.tabContainer}>
           {tabs.map(tab => (
@@ -199,7 +200,7 @@ const StaffSettings = () => {
                         </button>
                       ) : (
                         <button 
-                          style={{...styles.secondaryBtn, width: "auto", padding: "0 15px", background: "#64748b"}}
+                          style={{...styles.dangerBtn, width: "auto", padding: "0 15px", background: "#64748b"}}
                           onClick={() => {
                             setIsChangingEmail(false);
                             setEmailStep(1);
@@ -336,33 +337,11 @@ const StaffSettings = () => {
               <div style={styles.contentCard}>
                 <h2 style={styles.sectionHeader}>Terms & Conditions</h2>
                 <p style={styles.helperText}>
-                  Please read our terms and conditions carefully.
+                  Read the company's terms and conditions.
                 </p>
-                <div style={styles.termsContent}>
-                  <h3 style={styles.termsTitle}>1. Service Agreement</h3>
-                  <p style={styles.termsText}>
-                    By using our auto detailing services, you agree to the terms and conditions outlined here.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>2. Booking Policy</h3>
-                  <p style={styles.termsText}>
-                    All bookings must be made at least 30 minutes in advance. Cancellations must be requested 24 hours before the scheduled appointment.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>3. Payment Terms</h3>
-                  <p style={styles.termsText}>
-                    Full payment is required upon completion of services. For bookings over ₱5,000, a downpayment may be required to secure your slot.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>4. Vehicle Responsibility</h3>
-                  <p style={styles.termsText}>
-                    While we take utmost care with your vehicle, please remove all personal belongings before the service appointment.
-                  </p>
-                  
-                  <h3 style={styles.termsTitle}>5. Privacy Policy</h3>
-                  <p style={styles.termsText}>
-                    Your personal information is protected and will only be used for service-related communications.
-                  </p>
+                <div style={styles.termsPlaceholder}>
+                  <p>Terms and conditions content will be displayed here.</p>
+                  <p style={styles.helperText}>This section contains the official service agreement and operational policies of RENEW Auto Detailing.</p>
                 </div>
               </div>
             )}
@@ -378,13 +357,13 @@ const pageStyles = {
     display: "flex",
     background: "var(--bg-primary)",
     minHeight: "100vh",
+    color: "var(--text-primary)",
     fontFamily: "Poppins, system-ui, sans-serif"
   },
   main: {
     marginLeft: "280px",
     padding: "40px",
-    width: "100%",
-    color: "var(--text-primary)"
+    width: "100%"
   },
   title: {
     marginBottom: "24px",
@@ -482,6 +461,15 @@ const styles = {
     cursor: "pointer",
     fontSize: "14px"
   },
+  dangerBtn: {
+    padding: "14px 28px",
+    borderRadius: "10px",
+    border: "none",
+    color: "#fff",
+    fontWeight: "600",
+    cursor: "pointer",
+    fontSize: "14px"
+  },
   greenBtn: {
     padding: "14px 28px",
     borderRadius: "10px",
@@ -512,22 +500,12 @@ const styles = {
     color: "var(--text-secondary)",
     marginTop: "4px"
   },
-  termsContent: {
+  termsPlaceholder: {
     background: "var(--bg-secondary)",
     padding: "24px",
-    borderRadius: "12px"
-  },
-  termsTitle: {
-    fontSize: "16px",
-    fontWeight: "600",
-    marginBottom: "8px",
-    marginTop: "20px"
-  },
-  termsText: {
-    fontSize: "14px",
-    color: "var(--text-secondary)",
-    lineHeight: "1.6",
-    marginBottom: "12px"
+    borderRadius: "12px",
+    border: "1px dashed var(--border-color)",
+    textAlign: "center"
   },
   loading: {
     fontSize: "14px",

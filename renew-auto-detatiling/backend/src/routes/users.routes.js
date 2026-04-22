@@ -5,9 +5,11 @@ const authenticate = require("../middleware/auth.middleware");
 const authorize = require("../middleware/rbac.middleware");
 const bcrypt = require("bcryptjs");
 
+const authController = require("../controllers/auth.controller");
+
 /* ===============================
    GET USERS
- =============================== */
+=============================== */
 router.get("/", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (req, res) => {
   try {
     const { role } = req.query;
@@ -32,6 +34,11 @@ router.get("/", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (req, res
     res.status(500).json({ success: false, message: "Failed to fetch users" });
   }
 });
+
+/* ===============================
+   CREATE USER (ADMIN ONLY)
+ =============================== */
+router.post("/", authenticate, authorize("ADMIN", "SUPER_ADMIN"), authController.createUser);
 
 /* ===============================
    UPDATE USER ROLE
@@ -210,6 +217,11 @@ router.post("/me/request-delete", authenticate, async (req, res) => {
     console.error("REQUEST DELETE ERROR:", error);
     res.status(500).json({ success: false, message: "Failed to request account deletion" });
   }
+});
+
+router.all("*", (req, res) => {
+  console.log(`[DEBUG] Unmatched route in users.routes.js: ${req.method} ${req.url}`);
+  res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found in users router` });
 });
 
 module.exports = router;

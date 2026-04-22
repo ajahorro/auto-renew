@@ -24,33 +24,34 @@ const AdminBookings = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
 
-  const loadBookings = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (searchParams.get("status")) params.append("status", searchParams.get("status"));
-      if (searchParams.get("serviceStatus")) params.append("serviceStatus", searchParams.get("serviceStatus"));
-      if (searchParams.get("paymentStatus")) params.append("paymentStatus", searchParams.get("paymentStatus"));
-      
-      const url = `/bookings/admin?${params.toString()}`;
-      const res = await API.get(url);
-      setBookings(res.data.bookings || res.data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [searchParams]);
-
   useEffect(() => {
-    loadBookings();
-  }, [loadBookings]);
+    let isMounted = true;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (searchParams.get("status")) params.append("status", searchParams.get("status"));
+        if (searchParams.get("serviceStatus")) params.append("serviceStatus", searchParams.get("serviceStatus"));
+        if (searchParams.get("paymentStatus")) params.append("paymentStatus", searchParams.get("paymentStatus"));
+        if (searchTerm) params.append("search", searchTerm);
+        
+        const url = `/bookings/admin?${params.toString()}`;
+        const res = await API.get(url);
+        if (isMounted) {
+          setBookings(res.data.bookings || res.data || []);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
 
-  const filteredBookings = bookings.filter(b => 
-    b.customer?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    b.id.toString().includes(searchTerm) ||
-    b.vehicleType?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    load();
+    return () => { isMounted = false; };
+  }, [searchParams, searchTerm]);
+
+  const filteredBookings = bookings;
 
   return (
     <div style={styles.page}>
@@ -58,7 +59,10 @@ const AdminBookings = () => {
       <div style={styles.main}>
         <div style={styles.header}>
           <h1 style={styles.title}>
-            {filterStatus ? `${filterStatus} Bookings` : "All Bookings"}
+            {searchParams.get("status") ? `${searchParams.get("status")} Bookings` : 
+             searchParams.get("serviceStatus") ? `${searchParams.get("serviceStatus").replace("_", " ")} Services` :
+             searchParams.get("paymentStatus") ? `${searchParams.get("paymentStatus").replace("_", " ")} Payments` :
+             "All Bookings"}
           </h1>
           <div style={styles.actions}>
             <div style={styles.searchBox}>

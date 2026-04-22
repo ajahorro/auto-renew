@@ -31,6 +31,9 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
     }
   ];
 
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
   const getRecommendation = () => {
     // Flatten services
     const allServices = [
@@ -47,53 +50,59 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
     // Helper to find service by keyword
     const findByKeyword = (keywords, category = null) => {
       return allServices.find(s => {
-        const name = s.name.toLowerCase();
-        const matchesKeyword = keywords.some(k => name.includes(k));
-        const matchesCategory = !category || s.category === category;
+        const name = (s.name || "").toLowerCase();
+        const description = (s.description || "").toLowerCase();
+        const matchesKeyword = keywords.some(k => name.includes(k) || description.includes(k));
+        const matchesCategory = !category || (s.category || "").toUpperCase() === category.toUpperCase();
         return matchesKeyword && matchesCategory;
       });
     };
 
     if (lowerGoal === "full") {
-      // Suggest a package that sounds like a full detail
-      const fullDetail = findByKeyword(["premium", "full", "ultimate", "deluxe", "platinum"]);
-      if (fullDetail) recommendations.push(fullDetail);
-      
-      const interior = findByKeyword(["deep", "premium", "shampoo", "steam"], "INTERIOR");
-      if (interior && !recommendations.find(r => r.id === interior.id)) recommendations.push(interior);
-      
-      const exterior = findByKeyword(["wax", "sealant", "wash"], "EXTERIOR");
-      if (exterior && !recommendations.find(r => r.id === exterior.id)) recommendations.push(exterior);
-    } else if (lowerGoal === "shine") {
-      const shine = findByKeyword(["wax", "polish", "buff", "glaze", "sealant"]);
-      if (shine) recommendations.push(shine);
-      
-      const protection = findByKeyword(["ceramic", "coating", "graphene", "protection"], "SPECIALIZED");
-      if (protection && !recommendations.find(r => r.id === protection.id)) recommendations.push(protection);
-
-      const wash = findByKeyword(["wash", "exterior"], "EXTERIOR");
-      if (wash && !recommendations.find(r => r.id === wash.id)) recommendations.push(wash);
-    } else if (lowerGoal === "interior") {
-      const deepClean = findByKeyword(["deep", "shampoo", "steam", "vacuum"], "INTERIOR");
-      if (deepClean) recommendations.push(deepClean);
-      
-      const refresh = findByKeyword(["refresh", "express", "basic"], "INTERIOR");
-      if (refresh && !recommendations.find(r => r.id === refresh.id)) recommendations.push(refresh);
-    }
-
-    // Fallback if nothing found
-    if (recommendations.length === 0) {
-      // Just pick top 3 most expensive or popular ones if we have categories
-      if (lowerGoal === "full") {
-        recommendations = allServices.slice(0, 2);
-      } else if (lowerGoal === "interior") {
-        recommendations = (services.interior || []).slice(0, 2);
+      // Look for full detailing packages first
+      const fullDetail = findByKeyword(["premium", "full", "ultimate", "deluxe", "platinum", "all-in", "complete"]);
+      if (fullDetail) {
+        recommendations.push({ ...fullDetail, reason: `Our most comprehensive protection for your ${answers.size} vehicle.` });
       } else {
-        recommendations = (services.exterior || []).slice(0, 2);
+        // Fallback: pick the highest priced exterior and interior service
+        const bestExt = [...(services.exterior || [])].sort((a, b) => b.price - a.price)[0];
+        const bestInt = [...(services.interior || [])].sort((a, b) => b.price - a.price)[0];
+        if (bestExt) recommendations.push({ ...bestExt, reason: "Top-tier exterior care for maximum protection." });
+        if (bestInt) recommendations.push({ ...bestInt, reason: "Deep interior sanitization and refresh." });
+      }
+    } else if (lowerGoal === "shine") {
+      const shine = findByKeyword(["wax", "polish", "buff", "glaze", "sealant", "paint correction"]);
+      if (shine) recommendations.push({ ...shine, reason: "Restores deep gloss and adds a hydrophobic layer." });
+      
+      const protection = findByKeyword(["ceramic", "coating", "graphene", "paint protection"], "SPECIALIZED");
+      if (protection) recommendations.push({ ...protection, reason: "Professional-grade shield against UV and water spots." });
+    } else if (lowerGoal === "interior") {
+      const deepClean = findByKeyword(["deep", "shampoo", "steam", "vacuum", "leather", "upholstery", "disinfect"], "INTERIOR");
+      if (deepClean) {
+        recommendations.push({ ...deepClean, reason: "Total interior restoration and fresh scent." });
+      } else {
+        const anyInt = (services.interior || [])[0];
+        if (anyInt) recommendations.push({ ...anyInt, reason: "Essential interior maintenance for a cleaner cabin." });
       }
     }
 
-    return recommendations.slice(0, 3); // Max 3 suggestions
+    // Final fallback if nothing found
+    if (recommendations.length === 0) {
+      recommendations = allServices.slice(0, 2).map(s => ({ 
+        ...s, 
+        reason: "Our most popular professional choice for standard maintenance." 
+      }));
+    }
+
+    // Ensure unique recommendations
+    const seen = new Set();
+    const uniqueRecs = recommendations.filter(r => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+
+    return uniqueRecs.slice(0, 3);
   };
 
   const handleNext = (value) => {
@@ -102,7 +111,9 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
     if (step < QUESTIONS.length) {
       setStep(step + 1);
     } else {
-      setStep(QUESTIONS.length + 1); // Go to Result
+      setIsAnalyzing(true);
+      setStep(QUESTIONS.length + 1);
+      setTimeout(() => setIsAnalyzing(false), 1500);
     }
   };
 
@@ -275,7 +286,8 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
                   >
                     <div>
                       <div style={{ fontWeight: "600", fontSize: "14px" }}>{s.name}</div>
-                      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "2px" }}>₱{Number(s.price).toLocaleString()}</div>
+                      <div style={{ fontSize: "11px", color: "var(--accent-blue)", fontWeight: "500", marginTop: "2px" }}>{s.reason}</div>
+                      <div style={{ fontSize: "12px", color: "var(--text-secondary)", marginTop: "4px" }}>₱{Number(s.price).toLocaleString()}</div>
                     </div>
                     <Sparkles size={16} color="var(--accent-blue)" />
                   </div>

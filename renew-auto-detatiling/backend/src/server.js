@@ -135,34 +135,6 @@ app.get("/api/me", authenticate, async (req, res) => {
   }
 });
 
-/* ADMIN USER MANAGEMENT */
-app.get("/api/admin/users", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (req, res) => {
-  try {
-    const { role } = req.query;
-    const where = {};
-    if (role) where.role = role;
-
-    const users = await prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        phone: true,
-        role: true,
-        isActive: true,
-        createdAt: true
-      },
-      orderBy: { createdAt: "desc" }
-    });
-
-    res.json({ success: true, users });
-  } catch (error) {
-    console.error("GET /api/admin/users ERROR:", error);
-    res.status(500).json({ success: false, message: "Failed to load users" });
-  }
-});
-
 /* GLOBAL ERROR HANDLER */
 app.use((err, req, res, next) => {
   console.error("UNHANDLED ERROR:", err);

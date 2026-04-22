@@ -44,6 +44,14 @@ const AdminAnalytics = () => {
     return `₱${(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const navigateToBookings = (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.append(key, value);
+    });
+    window.location.href = `/admin/bookings?${params.toString()}`;
+  };
+
   const getPeakHourLabel = (hour) => {
     const period = hour >= 12 ? "PM" : "AM";
     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
@@ -112,6 +120,24 @@ const AdminAnalytics = () => {
             </select>
           </div>
         </div>
+
+        {/* AI INSIGHTS SECTION */}
+        {analytics.smartInsights && analytics.smartInsights.length > 0 && (
+          <div style={styles.aiInsightsCard}>
+            <div style={styles.aiInsightsHeader}>
+              <Sparkles size={20} color="var(--accent-blue)" />
+              <h3 style={{margin: 0, fontSize: "16px", fontWeight: "700"}}>AI Smart Insights</h3>
+            </div>
+            <div style={styles.insightsList}>
+              {analytics.smartInsights.map((insight, idx) => (
+                <div key={idx} style={styles.insightItem}>
+                  <div style={styles.insightDot} />
+                  <span>{insight}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={styles.statsGrid}>
           <div style={styles.statCard}>
@@ -275,30 +301,30 @@ const AdminAnalytics = () => {
           <div style={styles.card}>
             <h3 style={styles.cardTitle}>Booking Status Distribution</h3>
             <div style={styles.statusGrid}>
-              <div style={styles.statusItem}>
+              <div style={{...styles.statusItem, cursor: "pointer"}} onClick={() => navigateToBookings({ status: "PENDING" })}>
                 <span style={{...styles.statusDot, background: "#f59e0b"}}></span>
                 <span>Pending</span>
-                <span style={styles.statusCount}>{counts.pending}</span>
+                <span style={styles.statusCount}>{counts.booking?.PENDING || counts.pending}</span>
               </div>
-              <div style={styles.statusItem}>
+              <div style={{...styles.statusItem, cursor: "pointer"}} onClick={() => navigateToBookings({ status: "SCHEDULED" })}>
                 <span style={{...styles.statusDot, background: "#3b82f6"}}></span>
-                <span>Confirmed</span>
-                <span style={styles.statusCount}>{(counts.confirmed || 0) + (counts.scheduled || 0)}</span>
+                <span>Confirmed / Scheduled</span>
+                <span style={styles.statusCount}>{(counts.booking?.SCHEDULED || counts.scheduled || 0) + (counts.booking?.CONFIRMED || counts.confirmed || 0)}</span>
               </div>
-              <div style={styles.statusItem}>
+              <div style={{...styles.statusItem, cursor: "pointer"}} onClick={() => navigateToBookings({ status: "ONGOING" })}>
                 <span style={{...styles.statusDot, background: "#8b5cf6"}}></span>
                 <span>Ongoing</span>
-                <span style={styles.statusCount}>{counts.ongoing}</span>
+                <span style={styles.statusCount}>{counts.booking?.ONGOING || counts.ongoing}</span>
               </div>
-              <div style={styles.statusItem}>
+              <div style={{...styles.statusItem, cursor: "pointer"}} onClick={() => navigateToBookings({ status: "COMPLETED" })}>
                 <span style={{...styles.statusDot, background: "#10b981"}}></span>
                 <span>Completed</span>
-                <span style={styles.statusCount}>{counts.completed}</span>
+                <span style={styles.statusCount}>{counts.booking?.COMPLETED || counts.completed}</span>
               </div>
-              <div style={styles.statusItem}>
+              <div style={{...styles.statusItem, cursor: "pointer"}} onClick={() => navigateToBookings({ status: "CANCELLED" })}>
                 <span style={{...styles.statusDot, background: "#ef4444"}}></span>
                 <span>Cancelled</span>
-                <span style={styles.statusCount}>{counts.cancelled}</span>
+                <span style={styles.statusCount}>{counts.booking?.CANCELLED || counts.cancelled}</span>
               </div>
             </div>
           </div>
@@ -333,7 +359,7 @@ const AdminAnalytics = () => {
                   <span style={{flex: 2}}>{staff.name}</span>
                   <span style={{flex: 1}}>{staff.totalBookings}</span>
                   <span style={{flex: 1}}>{staff.completedBookings}</span>
-                  <span style={{...styles.completionRate, color: staff.completionRate >= 80 ? "#10b981" : staff.completionRate >= 50 ? "#f59e0b" : "#ef4444"}}>
+                  <span style={{flex: 1, ...styles.completionRate, color: staff.completionRate >= 80 ? "#10b981" : staff.completionRate >= 50 ? "#f59e0b" : "#ef4444"}}>
                     {staff.completionRate}%
                   </span>
                 </div>
@@ -365,6 +391,38 @@ const styles = {
   },
   pageTitle: { fontSize: "28px", fontWeight: "700", color: "var(--text-primary)", margin: 0 },
   dateSelect: { padding: "10px 16px", borderRadius: "8px", border: "1px solid var(--border-color)", background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: "14px", cursor: "pointer" },
+  aiInsightsCard: {
+    background: "linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%)",
+    border: "1px solid rgba(99, 102, 241, 0.2)",
+    borderRadius: "16px",
+    padding: "20px",
+    marginBottom: "24px"
+  },
+  aiInsightsHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "16px",
+    color: "var(--accent-blue)"
+  },
+  insightsList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px"
+  },
+  insightItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    fontSize: "14px",
+    color: "var(--text-primary)"
+  },
+  insightDot: {
+    width: "6px",
+    height: "6px",
+    borderRadius: "50%",
+    background: "var(--accent-blue)"
+  },
   loadingContainer: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "60px", gap: "16px" },
   spinner: { width: "40px", height: "40px", border: "3px solid var(--border-color)", borderTopColor: "var(--accent-blue)", borderRadius: "50%", animation: "spin 1s linear infinite" },
   errorCard: { padding: "24px", background: "var(--card-bg)", borderRadius: "12px", border: "1px solid var(--accent-red)", textAlign: "center" },

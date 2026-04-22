@@ -36,41 +36,37 @@ const AdminDashboard = () => {
             pendingReceivables: finances?.pendingRevenue || 0
           });
           
-          if (counts && counts.booking) {
+          if (counts) {
             setStatusCounts({
               booking: {
-                CONFIRMED: (counts.booking.CONFIRMED || 0) + (counts.booking.SCHEDULED || 0),
-                CANCELLED: counts.booking.CANCELLED || 0,
-                COMPLETED: counts.booking.COMPLETED || 0
+                SCHEDULED: counts.booking?.SCHEDULED || 0,
+                ONGOING: counts.booking?.ONGOING || 0,
+                COMPLETED: counts.booking?.COMPLETED || 0,
+                CANCELLED: counts.booking?.CANCELLED || 0
               },
               service: {
                 NOT_STARTED: counts.service?.NOT_STARTED || 0,
                 ONGOING: counts.service?.ONGOING || 0,
-                COMPLETED: counts.service?.COMPLETED || 0,
-                CANCELLED: counts.booking.CANCELLED || 0
+                COMPLETED: counts.service?.COMPLETED || 0
               },
               payment: {
                 PENDING: counts.payment?.PENDING || 0,
-                DOWNPAYMENT_PAID: counts.payment?.PARTIALLY_PAID || 0,
-                COMPLETED: counts.payment?.PAID || counts.payment?.COMPLETED || 0,
-                REFUNDED: 0,
-                CANCELLED: counts.booking.CANCELLED || 0
+                PARTIALLY_PAID: counts.payment?.PARTIALLY_PAID || 0,
+                PAID: counts.payment?.PAID || 0,
+                FOR_VERIFICATION: counts.payment?.FOR_VERIFICATION || 0,
+                REJECTED: counts.payment?.REJECTED || 0
               }
             });
           }
         }
 
-        const bookingsRes = await API.get("/bookings");
-        const list = Array.isArray(bookingsRes.data) 
-          ? bookingsRes.data 
-          : (bookingsRes.data.bookings || []);
+        const [bookingsRes, unassignedRes] = await Promise.all([
+          API.get("/bookings?limit=5"),
+          API.get("/bookings?status=PENDING&limit=5")
+        ]);
         
-        setBookings(list.slice(0, 5));
-
-        const unassignedList = list.filter(b => 
-          !b.assignedStaffId && !["CANCELLED", "COMPLETED"].includes(b.status)
-        );
-        setUnassigned(unassignedList.slice(0, 5));
+        setBookings(Array.isArray(bookingsRes.data) ? bookingsRes.data : (bookingsRes.data.bookings || []));
+        setUnassigned(Array.isArray(unassignedRes.data) ? unassignedRes.data : (unassignedRes.data.bookings || []));
       } catch (err) {
         console.error("Dashboard data fetch error:", err);
       }
@@ -113,12 +109,12 @@ const AdminDashboard = () => {
         </div>
 
         <div style={styles.grid}>
-          <div style={styles.clickableCard} onClick={() => navigateToBookings()}>
+          <div className="clickable-card" style={styles.clickableCard} onClick={() => navigateToBookings()}>
             <p style={styles.cardLabel}>Total Bookings</p>
             <h2 style={styles.cardValue}>{analytics.totalBookings}</h2>
             <p style={styles.cardHint}>Click to view all</p>
           </div>
-          <div style={styles.clickableCard} onClick={() => navigateToBookings({ status: "COMPLETED" })}>
+          <div className="clickable-card" style={styles.clickableCard} onClick={() => navigateToBookings({ status: "COMPLETED" })}>
             <p style={styles.cardLabel}>Completed</p>
             <h2 style={styles.cardValue}>{analytics.completedBookings}</h2>
             <p style={styles.cardHint}>Click to view completed</p>
@@ -146,7 +142,7 @@ const AdminDashboard = () => {
               <h3 style={styles.categoryTitle}>Bookings</h3>
               <div style={styles.statusStack}>
                 {Object.entries(statusCounts.booking).map(([status, count]) => (
-                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings({ status })}>
+                  <div key={status} className="interactive-item" style={styles.statusRowItem} onClick={() => navigateToBookings({ status })}>
                     <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
                     <span style={styles.statusName}>{status.replace("_", " ")}</span>
                     <span style={styles.statusCount}>{count}</span>
@@ -159,7 +155,7 @@ const AdminDashboard = () => {
               <h3 style={styles.categoryTitle}>Services</h3>
               <div style={styles.statusStack}>
                 {Object.entries(statusCounts.service).map(([status, count]) => (
-                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings({ serviceStatus: status })}>
+                  <div key={status} className="interactive-item" style={styles.statusRowItem} onClick={() => navigateToBookings({ serviceStatus: status })}>
                     <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
                     <span style={styles.statusName}>{status.replace("_", " ")}</span>
                     <span style={styles.statusCount}>{count}</span>
@@ -172,7 +168,12 @@ const AdminDashboard = () => {
               <h3 style={styles.categoryTitle}>Payments</h3>
               <div style={styles.statusStack}>
                 {Object.entries(statusCounts.payment).map(([status, count]) => (
-                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings({ paymentStatus: status })}>
+                  <div 
+                    key={status} 
+                    className="interactive-item"
+                    style={styles.statusRowItem} 
+                    onClick={() => navigateToBookings({ paymentStatus: status })}
+                  >
                     <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
                     <span style={styles.statusName}>{status.replace("_", " ")}</span>
                     <span style={styles.statusCount}>{count}</span>
@@ -312,10 +313,7 @@ const styles = {
     padding: "8px",
     borderRadius: "8px",
     cursor: "pointer",
-    transition: "0.2s",
-    "&:hover": {
-      background: "var(--bg-tertiary)"
-    }
+    transition: "0.2s"
   },
   statusIndicator: {
     width: "8px",

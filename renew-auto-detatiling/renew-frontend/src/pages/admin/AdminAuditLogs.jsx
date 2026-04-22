@@ -138,7 +138,7 @@ const AdminAuditLogs = () => {
                         {log.action}
                       </span>
                       <span style={styles.performer}>
-                        Performed by <strong>{log.performer?.fullName || "System"}</strong>
+                        Performed by <strong>{log.performer?.fullName || log.performedBy || "System"}</strong>
                       </span>
                       <span style={styles.timestamp}>
                         {new Date(log.createdAt).toLocaleString("en-PH", {
@@ -177,7 +177,7 @@ const AdminAuditLogs = () => {
                   </div>
                   <div style={styles.modalInfoItem}>
                     <label>Performer</label>
-                    <span>{selectedLog.performer?.fullName} ({selectedLog.performer?.role})</span>
+                    <span>{selectedLog.performer?.fullName || selectedLog.performedBy || "System"} ({selectedLog.performer?.role || "N/A"})</span>
                   </div>
                   <div style={styles.modalInfoItem}>
                     <label>Time</label>
@@ -187,32 +187,8 @@ const AdminAuditLogs = () => {
 
                 <div style={styles.detailBox}>
                   <label>Full Description</label>
-                  <p>{selectedLog.details}</p>
+                  <p style={{fontSize: "16px", lineHeight: "1.6", color: "#f8fafc"}}>{selectedLog.details}</p>
                 </div>
-
-                {(selectedLog.oldValue || selectedLog.newValue) && (
-                  <div style={styles.diffSection}>
-                    <label>Data Changes</label>
-                    <div style={styles.diffGrid}>
-                      <div style={styles.diffCol}>
-                        <span style={styles.diffLabel}>Previous State</span>
-                        <pre style={styles.json}>
-                          {selectedLog.oldValue && typeof selectedLog.oldValue === 'string' 
-                            ? JSON.stringify(JSON.parse(selectedLog.oldValue), null, 2) 
-                            : JSON.stringify(selectedLog.oldValue || {}, null, 2)}
-                        </pre>
-                      </div>
-                      <div style={styles.diffCol}>
-                        <span style={styles.diffLabel}>New State</span>
-                        <pre style={{...styles.json, color: "#22c55e"}}>
-                          {selectedLog.newValue && typeof selectedLog.newValue === 'string' 
-                            ? JSON.stringify(JSON.parse(selectedLog.newValue), null, 2) 
-                            : JSON.stringify(selectedLog.newValue || {}, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>

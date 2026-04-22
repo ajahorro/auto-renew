@@ -65,7 +65,7 @@ const AdminSettings = () => {
         console.log("No business settings yet");
       }
 
-      const usersRes = await API.get("/admin/users");
+      const usersRes = await API.get("/users");
       const users = usersRes.data.users || [];
       setStaffList(users.filter(u => u.role === "STAFF" || u.role === "ADMIN"));
       setCustomerList(users.filter(u => u.role === "CUSTOMER"));

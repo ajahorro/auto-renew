@@ -70,8 +70,7 @@ const AdminSidebar = ({ active }) => {
   const navigate = useNavigate();
   const { logout: contextLogout } = useContext(AuthContext);
   const [notifCount, setNotifCount] = useState(0);
-
-  const lastCountRef = useRef(0);
+  const lastCountRef = useRef(null);
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -80,7 +79,7 @@ const AdminSidebar = ({ active }) => {
       const unread = list.filter(n => !n.isRead);
       const unreadCount = unread.length;
       
-      if (unreadCount > lastCountRef.current) {
+      if (lastCountRef.current !== null && unreadCount > lastCountRef.current) {
         const latest = unread[0];
         if (latest) {
           toast(latest.title || "New Notification", {

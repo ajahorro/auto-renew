@@ -607,12 +607,16 @@ const deactivateUser = async (req, res) => {
       return res.status(403).json({ success: false, message: "Cannot deactivate customer accounts through admin panel" });
     }
 
-    await prisma.user.update({
+    console.log(`[DEACTIVATE_USER] Deactivating user ${id} (role: ${user.role})`);
+    
+    const updatedUser = await prisma.user.update({
       where: { id },
       data: { isActive: false }
     });
 
-    res.json({ success: true, message: "User deactivated" });
+    console.log(`[DEACTIVATE_USER] User ${id} isActive set to:`, updatedUser.isActive);
+
+    res.json({ success: true, message: "User deactivated", user: updatedUser });
   } catch (error) {
     console.error("ERROR [DEACTIVATE_USER]:", error);
     res.status(500).json({ 

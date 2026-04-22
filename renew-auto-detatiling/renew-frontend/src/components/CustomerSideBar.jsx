@@ -99,9 +99,11 @@ const CustomerSidebar = ({ active }) => {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     const initNotifications = async () => {
       try {
         const res = await API.get("/notifications");
+        if (!isMounted) return;
         const list = res.data?.notifications || res.data || [];
         const unreadCount = list.filter(n => !n.isRead).length;
         setNotifCount(unreadCount);
@@ -113,7 +115,10 @@ const CustomerSidebar = ({ active }) => {
 
     initNotifications();
     const interval = setInterval(fetchNotifications, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [fetchNotifications]);
 
   const logout = async () => {

@@ -157,3 +157,24 @@ table {
 .sidebar * {
   color: var(--text-primary);
 }
+
+/* Interactive Components */
+.interactive-item {
+  transition: all 0.2s ease;
+}
+
+.interactive-item:hover {
+  background: var(--bg-tertiary) !important;
+  transform: translateX(4px);
+}
+
+.clickable-card {
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.clickable-card:hover {
+  border-color: var(--accent-blue) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
