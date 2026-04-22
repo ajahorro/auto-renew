@@ -3,14 +3,23 @@ const prisma = require("../config/prisma");
 const LOG_REQUEST = require("../utils/logRequest");
 const { createNotification } = require("../services/notification.service");
 
-const STATUS = {
-  PENDING: "PENDING",
-  CONFIRMED: "CONFIRMED",
-  SCHEDULED: "SCHEDULED",
-  ONGOING: "ONGOING",
-  COMPLETED: "COMPLETED",
-  CANCELLED: "CANCELLED",
-  PENDING_PAYMENT: "PENDING_PAYMENT"
+const BOOKING_STATUS = {
+  Scheduled: "Scheduled",
+  Cancelled: "Cancelled"
+};
+
+const SERVICE_STATUS = {
+  NotStarted: "NotStarted",
+  Ongoing: "Ongoing",
+  Completed: "Completed"
+};
+
+const PAYMENT_STATUS = {
+  Pending: "Pending",
+  ForVerification: "ForVerification",
+  PartiallyPaid: "PartiallyPaid",
+  Paid: "Paid",
+  Rejected: "Rejected"
 };
 
 const parseBookingId = (req) => {
@@ -24,19 +33,28 @@ const isPrivilegedRole = (role) => {
   return r === "ADMIN" || r === "SUPER_ADMIN";
 };
 
-const VALID_TRANSITIONS = {
-  PENDING: ["CONFIRMED", "CANCELLED", "ONGOING"],
-  CONFIRMED: ["ONGOING", "CANCELLED", "COMPLETED"],
-  SCHEDULED: ["ONGOING", "CANCELLED"],
-  ONGOING: ["COMPLETED"],
-  COMPLETED: [],
-  CANCELLED: [],
-  PENDING_PAYMENT: ["PENDING", "CONFIRMED", "CANCELLED"]
+const VALID_BOOKING_TRANSITIONS = {
+  Scheduled: ["Cancelled"],
+  Cancelled: []
 };
 
-const isValidTransition = (current, next) => {
-  if (current === next) return true;
-  return VALID_TRANSITIONS[current]?.includes(next) || false;
+const VALID_SERVICE_TRANSITIONS = {
+  NotStarted: ["Ongoing"],
+  Ongoing: ["Completed"],
+  Completed: []
+};
+
+const isValidTransition = (type, current, next) => {
+  if (type === 'booking') {
+    const transitions = VALID_BOOKING_TRANSITIONS;
+    if (current === next) return true;
+    return transitions[current]?.includes(next) || false;
+  } else if (type === 'service') {
+    const transitions = VALID_SERVICE_TRANSITIONS;
+    if (current === next) return true;
+    return transitions[current]?.includes(next) || false;
+  }
+  return false;
 };
 
 const notifyAdminsBookingUpdated = async (bookingId, title, message) => {
@@ -289,13 +307,14 @@ const createBooking = async (req, res) => {
         throw new Error("Selected time slot is fully booked. Please choose another time.");
       }
 
-      const newBooking = await tx.booking.create({
+const newBooking = await tx.booking.create({
         data: {
           customerId: finalCustomerId,
-          status: STATUS.PENDING,
+          status: BOOKING_STATUS.Scheduled,
           cancellationStatus: "NONE",
           refundStatus: "NONE",
-          paymentStatus: "PENDING",
+          paymentStatus: PAYMENT_STATUS.Pending,
+          serviceStatus: SERVICE_STATUS.NotStarted,
           appointmentStart,
           appointmentEnd,
           totalAmount: parsedTotalAmount,
@@ -377,7 +396,7 @@ const cancelBooking = async (req, res) => {
     }
 
     const booking = await prisma.booking.findUnique({
-      where: { id }
+      where: { id }z
     });
 
     if (!booking) {
@@ -394,7 +413,7 @@ const cancelBooking = async (req, res) => {
       });
     }
 
-    if (booking.status !== STATUS.PENDING && booking.status !== STATUS.CONFIRMED) {
+if (booking.status !== BOOKING_STATUS.Scheduled) {
       return res.status(400).json({
         success: false,
         message: "Only pending or confirmed bookings can be cancelled"
