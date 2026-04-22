@@ -99,7 +99,19 @@ const CustomerSidebar = ({ active }) => {
   }, []);
 
   useEffect(() => {
-    fetchNotifications();
+    const initNotifications = async () => {
+      try {
+        const res = await API.get("/notifications");
+        const list = res.data?.notifications || res.data || [];
+        const unreadCount = list.filter(n => !n.isRead).length;
+        setNotifCount(unreadCount);
+        lastCountRef.current = unreadCount;
+      } catch {
+        // Silently fail
+      }
+    };
+
+    initNotifications();
     const interval = setInterval(fetchNotifications, 5000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);

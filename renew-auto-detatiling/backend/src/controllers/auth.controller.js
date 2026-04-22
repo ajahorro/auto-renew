@@ -598,6 +598,14 @@ const deactivateUser = async (req, res) => {
     LOG_REQUEST(req, "DEACTIVATE_USER");
     
     const { id } = req.params;
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.role === "CUSTOMER") {
+      return res.status(403).json({ success: false, message: "Cannot deactivate customer accounts through admin panel" });
+    }
 
     await prisma.user.update({
       where: { id },
@@ -620,6 +628,15 @@ const activateUser = async (req, res) => {
     LOG_REQUEST(req, "ACTIVATE_USER");
     
     const { id } = req.params;
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (user.role === "CUSTOMER") {
+      return res.status(403).json({ success: false, message: "Cannot activate customer accounts through admin panel" });
+    }
 
     await prisma.user.update({
       where: { id },

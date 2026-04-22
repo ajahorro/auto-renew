@@ -2965,7 +2965,7 @@ const getAdminBookings = async (req, res) => {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    let { status, page = 1, limit = 20 } = req.query;
+    let { status, serviceStatus, paymentStatus, page = 1, limit = 20 } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
     const skip = (page - 1) * limit;
@@ -2973,6 +2973,12 @@ const getAdminBookings = async (req, res) => {
     let where = {};
     if (status) {
       where.status = status.toUpperCase();
+    }
+    if (serviceStatus) {
+      where.serviceStatus = serviceStatus.toUpperCase();
+    }
+    if (paymentStatus) {
+      where.paymentStatus = paymentStatus.toUpperCase();
     }
 
     const [totalCount, bookings] = await Promise.all([

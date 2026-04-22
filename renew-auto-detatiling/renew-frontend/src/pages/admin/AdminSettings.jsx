@@ -200,18 +200,7 @@ const AdminSettings = () => {
     }
   };
 
-  const deleteCustomer = async () => {
-    if (!deletingUser) return;
-    try {
-      await API.patch(`/users/${deletingUser.id}/archive`);
-      toast.success("Customer archived. Will be permanently deleted after 15 days.");
-      setShowDeleteModal(false);
-      setDeletingUser(null);
-      loadData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to archive customer");
-    }
-  };
+  // Customer deletion logic removed as per requirements.
 
   const getThemeLabel = () => {
     if (theme === "system") return "System Default";
@@ -527,15 +516,7 @@ const AdminSettings = () => {
                               {new Date(user.createdAt).toLocaleDateString()}
                             </td>
                             <td style={styles.tableCell}>
-                              <button 
-                                style={{
-                                  ...styles.actionBtn,
-                                  background: user.isActive ? "#ef4444" : "#22c55e"
-                                }}
-                                onClick={() => toggleUserStatus(user.id, user.isActive)}
-                              >
-                                {user.isActive ? "Deactivate" : "Activate"}
-                              </button>
+                              <span style={styles.helperText}>Protected Account</span>
                             </td>
                           </tr>
                         ))
@@ -589,30 +570,7 @@ const AdminSettings = () => {
                   </div>
                 )}
 
-                {showDeleteModal && deletingUser && (
-                  <div style={styles.modalOverlay} onClick={() => setShowDeleteModal(false)}>
-                    <div style={styles.modal} onClick={e => e.stopPropagation()}>
-                      <h3 style={styles.modalTitle}>Archive Customer Account</h3>
-                      <p style={styles.deleteWarning}>
-                        Are you sure you want to archive <strong>{deletingUser.fullName}</strong>'s account?
-                      </p>
-                      <p style={styles.deleteInfo}>
-                        The account will be archived for 15 days. During this period, the customer can recover their account by simply logging in. After 15 days, the account and all associated booking history will be permanently deleted.
-                      </p>
-                      <div style={styles.modalActions}>
-                        <button style={styles.cancelBtn} onClick={() => {
-                          setShowDeleteModal(false);
-                          setDeletingUser(null);
-                        }}>
-                          Cancel
-                        </button>
-                        <button style={{...styles.dangerBtn, flex: 1}} onClick={deleteCustomer}>
-                          Yes, Archive Account
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {/* showDeleteModal removed as customers cannot be deleted by admins */}
               </div>
             )}
 

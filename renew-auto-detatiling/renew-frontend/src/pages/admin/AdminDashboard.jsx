@@ -92,12 +92,14 @@ const AdminDashboard = () => {
     }
   };
 
-  const navigateToBookings = (status = "") => {
-    if (status) {
-      navigate(`/admin/bookings?status=${status}`);
-    } else {
-      navigate("/admin/bookings");
-    }
+  const navigateToBookings = (filters = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.append(key, value);
+    });
+    
+    const queryString = params.toString();
+    navigate(`/admin/bookings${queryString ? `?${queryString}` : ""}`);
   };
 
   return (
@@ -116,7 +118,7 @@ const AdminDashboard = () => {
             <h2 style={styles.cardValue}>{analytics.totalBookings}</h2>
             <p style={styles.cardHint}>Click to view all</p>
           </div>
-          <div style={styles.clickableCard} onClick={() => navigateToBookings("COMPLETED")}>
+          <div style={styles.clickableCard} onClick={() => navigateToBookings({ status: "COMPLETED" })}>
             <p style={styles.cardLabel}>Completed</p>
             <h2 style={styles.cardValue}>{analytics.completedBookings}</h2>
             <p style={styles.cardHint}>Click to view completed</p>
@@ -144,7 +146,7 @@ const AdminDashboard = () => {
               <h3 style={styles.categoryTitle}>Bookings</h3>
               <div style={styles.statusStack}>
                 {Object.entries(statusCounts.booking).map(([status, count]) => (
-                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings(status)}>
+                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings({ status })}>
                     <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
                     <span style={styles.statusName}>{status.replace("_", " ")}</span>
                     <span style={styles.statusCount}>{count}</span>
@@ -157,7 +159,7 @@ const AdminDashboard = () => {
               <h3 style={styles.categoryTitle}>Services</h3>
               <div style={styles.statusStack}>
                 {Object.entries(statusCounts.service).map(([status, count]) => (
-                  <div key={status} style={styles.statusRowItem}>
+                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings({ serviceStatus: status })}>
                     <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
                     <span style={styles.statusName}>{status.replace("_", " ")}</span>
                     <span style={styles.statusCount}>{count}</span>
@@ -170,7 +172,7 @@ const AdminDashboard = () => {
               <h3 style={styles.categoryTitle}>Payments</h3>
               <div style={styles.statusStack}>
                 {Object.entries(statusCounts.payment).map(([status, count]) => (
-                  <div key={status} style={styles.statusRowItem}>
+                  <div key={status} style={styles.statusRowItem} onClick={() => navigateToBookings({ paymentStatus: status })}>
                     <div style={{...styles.statusIndicator, background: getStatusColor(status)}} />
                     <span style={styles.statusName}>{status.replace("_", " ")}</span>
                     <span style={styles.statusCount}>{count}</span>

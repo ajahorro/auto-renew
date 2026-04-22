@@ -19,6 +19,13 @@ const StaffSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Email change states
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [emailStep, setEmailStep] = useState(1); // 1: Input Email, 2: OTP
+
   useEffect(() => {
     loadUser();
   }, []);
@@ -50,6 +57,47 @@ const StaffSettings = () => {
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const requestEmailChange = async () => {
+    if (!newEmail || !newEmail.includes("@")) {
+      toast.error("Enter a valid email");
+      return;
+    }
+    setSaving(true);
+    try {
+      await API.post("/auth/send-email-otp", { email: newEmail });
+      toast.success("OTP sent to your new email");
+      setOtpSent(true);
+      setEmailStep(2);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to send OTP");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const verifyEmailChange = async () => {
+    if (!otp) {
+      toast.error("Enter OTP");
+      return;
+    }
+    setSaving(true);
+    try {
+      await API.post("/auth/verify-email-otp", { email: newEmail, otp });
+      toast.success("Email updated successfully");
+      setProfile(p => ({ ...p, email: newEmail }));
+      setIsChangingEmail(false);
+      setOtpSent(false);
+      setEmailStep(1);
+      setNewEmail("");
+      setOtp("");
+      loadUser();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Verification failed");
     } finally {
       setSaving(false);
     }
@@ -128,18 +176,74 @@ const StaffSettings = () => {
                     />
                   </div>
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>Email</label>
-                    <input
-                      placeholder="Email"
-                      value={profile.email}
-                      disabled
-                      style={{...styles.input, opacity: 0.5, cursor: "not-allowed"}}
-                    />
+                    <label style={styles.label}>Email Address</label>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <input
+                        placeholder="Email"
+                        value={isChangingEmail ? newEmail : profile.email}
+                        onChange={(e) => isChangingEmail && setNewEmail(e.target.value)}
+                        disabled={!isChangingEmail || emailStep === 2}
+                        style={{
+                          ...styles.input, 
+                          flex: 1,
+                          opacity: (!isChangingEmail || emailStep === 2) ? 0.7 : 1,
+                          cursor: (!isChangingEmail || emailStep === 2) ? "not-allowed" : "text"
+                        }}
+                      />
+                      {!isChangingEmail ? (
+                        <button 
+                          style={{...styles.secondaryBtn, width: "auto", padding: "0 15px"}}
+                          onClick={() => setIsChangingEmail(true)}
+                        >
+                          Change
+                        </button>
+                      ) : (
+                        <button 
+                          style={{...styles.secondaryBtn, width: "auto", padding: "0 15px", background: "#64748b"}}
+                          onClick={() => {
+                            setIsChangingEmail(false);
+                            setEmailStep(1);
+                            setOtpSent(false);
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <button style={styles.primaryBtn} onClick={saveProfile} disabled={saving}>
-                  {saving ? "Saving..." : "Save Profile"}
-                </button>
+
+                {isChangingEmail && emailStep === 2 && (
+                  <div style={{...styles.formGroup, marginTop: "20px"}}>
+                    <label style={styles.label}>Enter OTP sent to {newEmail}</label>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <input
+                        placeholder="6-digit OTP"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value)}
+                        style={{...styles.input, flex: 1}}
+                        maxLength={6}
+                      />
+                      <button 
+                        style={{...styles.primaryBtn, width: "auto", padding: "0 20px"}}
+                        onClick={verifyEmailChange}
+                        disabled={saving}
+                      >
+                        Verify & Update
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!isChangingEmail ? (
+                  <button style={styles.primaryBtn} onClick={saveProfile} disabled={saving}>
+                    {saving ? "Saving..." : "Save Profile"}
+                  </button>
+                ) : emailStep === 1 && (
+                  <button style={styles.primaryBtn} onClick={requestEmailChange} disabled={saving}>
+                    {saving ? "Sending OTP..." : "Send Verification OTP"}
+                  </button>
+                )}
 
                 <div style={styles.divider} />
                 <h2 style={styles.sectionHeader}>Change Password</h2>
@@ -274,10 +378,10 @@ const pageStyles = {
     display: "flex",
     background: "var(--bg-primary)",
     minHeight: "100vh",
-    fontFamily: "Poppins, system-ui"
+    fontFamily: "Poppins, system-ui, sans-serif"
   },
   main: {
-    marginLeft: "260px",
+    marginLeft: "280px",
     padding: "40px",
     width: "100%",
     color: "var(--text-primary)"
@@ -361,8 +465,19 @@ const styles = {
     padding: "14px 28px",
     borderRadius: "10px",
     border: "none",
-    background: "#f59e0b",
-    color: "#020617",
+    background: "var(--accent-blue)",
+    color: "#fff",
+    fontWeight: "600",
+    cursor: "pointer",
+    fontSize: "14px",
+    transition: "0.2s"
+  },
+  secondaryBtn: {
+    padding: "14px 28px",
+    borderRadius: "10px",
+    border: "1px solid var(--border-color)",
+    background: "var(--bg-secondary)",
+    color: "var(--text-primary)",
     fontWeight: "600",
     cursor: "pointer",
     fontSize: "14px"
@@ -439,8 +554,8 @@ const themeStyles = {
     transition: "0.2s"
   },
   optionActive: {
-    borderColor: "#f59e0b",
-    background: "rgba(245, 158, 11, 0.1)"
+    borderColor: "var(--accent-blue)",
+    background: "rgba(59, 130, 246, 0.1)"
   },
   optionIcon: {
     width: "56px",

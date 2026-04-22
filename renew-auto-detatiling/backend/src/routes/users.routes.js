@@ -60,8 +60,11 @@ router.patch("/:id/archive", authenticate, authorize("ADMIN", "SUPER_ADMIN"), as
     const { id } = req.params;
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
-    if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
-      return res.status(403).json({ success: false, message: "Cannot deactivate admin accounts" });
+    if (user.role === "ADMIN" || user.role === "SUPER_ADMIN" || user.role === "CUSTOMER") {
+      return res.status(403).json({ 
+        success: false, 
+        message: user.role === "CUSTOMER" ? "Cannot archive customer accounts from here" : "Cannot deactivate admin accounts" 
+      });
     }
     await prisma.user.update({ where: { id }, data: { isActive: false } });
     res.json({ success: true, message: "User deactivated" });
@@ -76,8 +79,11 @@ router.patch("/:id/deactivate", authenticate, authorize("ADMIN", "SUPER_ADMIN"),
     const { id } = req.params;
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user) return res.status(404).json({ success: false, message: "User not found" });
-    if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") {
-      return res.status(403).json({ success: false, message: "Cannot deactivate admin accounts" });
+    if (user.role === "ADMIN" || user.role === "SUPER_ADMIN" || user.role === "CUSTOMER") {
+      return res.status(403).json({ 
+        success: false, 
+        message: user.role === "CUSTOMER" ? "Cannot deactivate customer accounts" : "Cannot deactivate admin accounts" 
+      });
     }
     await prisma.user.update({ where: { id }, data: { isActive: false } });
     res.json({ success: true, message: "User deactivated" });
@@ -121,7 +127,7 @@ router.delete("/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (re
     
     // Admin is NOT allowed to delete customer accounts
     if (user.role === "CUSTOMER") {
-      return res.status(403).json({ success: false, message: "Deletion of customer accounts is restricted. Please deactivate instead." });
+      return res.status(403).json({ success: false, message: "Deletion of customer accounts is restricted. Customers must request deletion themselves." });
     }
     
     await prisma.user.delete({ where: { id } });

@@ -39,31 +39,58 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
       ...(services.specialized || [])
     ];
 
-    let recommendations = [];
+    if (allServices.length === 0) return [];
 
-    // Logic for recommendation
-    if (answers.goal === "full") {
+    let recommendations = [];
+    const lowerGoal = answers.goal.toLowerCase();
+
+    // Helper to find service by keyword
+    const findByKeyword = (keywords, category = null) => {
+      return allServices.find(s => {
+        const name = s.name.toLowerCase();
+        const matchesKeyword = keywords.some(k => name.includes(k));
+        const matchesCategory = !category || s.category === category;
+        return matchesKeyword && matchesCategory;
+      });
+    };
+
+    if (lowerGoal === "full") {
       // Suggest a package that sounds like a full detail
-      const fullDetail = allServices.find(s => s.name.toLowerCase().includes("premium") || s.name.toLowerCase().includes("full"));
+      const fullDetail = findByKeyword(["premium", "full", "ultimate", "deluxe", "platinum"]);
       if (fullDetail) recommendations.push(fullDetail);
       
-      const interior = allServices.find(s => s.category === "INTERIOR" && (s.name.toLowerCase().includes("deep") || s.name.toLowerCase().includes("premium")));
+      const interior = findByKeyword(["deep", "premium", "shampoo", "steam"], "INTERIOR");
       if (interior && !recommendations.find(r => r.id === interior.id)) recommendations.push(interior);
-    } else if (answers.goal === "shine") {
-      const wax = allServices.find(s => s.name.toLowerCase().includes("wax") || s.name.toLowerCase().includes("polish"));
-      if (wax) recommendations.push(wax);
       
-      const specialized = allServices.find(s => s.category === "SPECIALIZED" && (s.name.toLowerCase().includes("ceramic") || s.name.toLowerCase().includes("coating")));
-      if (specialized) recommendations.push(specialized);
-    } else if (answers.goal === "interior") {
-      const interior = allServices.find(s => s.category === "INTERIOR" && (s.name.toLowerCase().includes("vacuum") || s.name.toLowerCase().includes("shampoo")));
-      if (interior) recommendations.push(interior);
+      const exterior = findByKeyword(["wax", "sealant", "wash"], "EXTERIOR");
+      if (exterior && !recommendations.find(r => r.id === exterior.id)) recommendations.push(exterior);
+    } else if (lowerGoal === "shine") {
+      const shine = findByKeyword(["wax", "polish", "buff", "glaze", "sealant"]);
+      if (shine) recommendations.push(shine);
+      
+      const protection = findByKeyword(["ceramic", "coating", "graphene", "protection"], "SPECIALIZED");
+      if (protection && !recommendations.find(r => r.id === protection.id)) recommendations.push(protection);
+
+      const wash = findByKeyword(["wash", "exterior"], "EXTERIOR");
+      if (wash && !recommendations.find(r => r.id === wash.id)) recommendations.push(wash);
+    } else if (lowerGoal === "interior") {
+      const deepClean = findByKeyword(["deep", "shampoo", "steam", "vacuum"], "INTERIOR");
+      if (deepClean) recommendations.push(deepClean);
+      
+      const refresh = findByKeyword(["refresh", "express", "basic"], "INTERIOR");
+      if (refresh && !recommendations.find(r => r.id === refresh.id)) recommendations.push(refresh);
     }
 
-    // Always add a basic exterior wash if it's not there and it's shine or full
-    if (answers.goal !== "interior" && recommendations.length < 2) {
-      const wash = allServices.find(s => s.name.toLowerCase().includes("wash") && !s.name.toLowerCase().includes("engine"));
-      if (wash && !recommendations.find(r => r.id === wash.id)) recommendations.push(wash);
+    // Fallback if nothing found
+    if (recommendations.length === 0) {
+      // Just pick top 3 most expensive or popular ones if we have categories
+      if (lowerGoal === "full") {
+        recommendations = allServices.slice(0, 2);
+      } else if (lowerGoal === "interior") {
+        recommendations = (services.interior || []).slice(0, 2);
+      } else {
+        recommendations = (services.exterior || []).slice(0, 2);
+      }
     }
 
     return recommendations.slice(0, 3); // Max 3 suggestions

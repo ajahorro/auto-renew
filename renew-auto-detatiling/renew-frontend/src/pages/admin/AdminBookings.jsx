@@ -27,17 +27,20 @@ const AdminBookings = () => {
   const loadBookings = useCallback(async () => {
     setLoading(true);
     try {
-    const url = `/bookings/admin${filterStatus ? `?status=${filterStatus}` : ""}`;
+      const params = new URLSearchParams();
+      if (searchParams.get("status")) params.append("status", searchParams.get("status"));
+      if (searchParams.get("serviceStatus")) params.append("serviceStatus", searchParams.get("serviceStatus"));
+      if (searchParams.get("paymentStatus")) params.append("paymentStatus", searchParams.get("paymentStatus"));
+      
+      const url = `/bookings/admin?${params.toString()}`;
       const res = await API.get(url);
-
-    
       setBookings(res.data.bookings || res.data || []);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [filterStatus]);
+  }, [searchParams]);
 
   useEffect(() => {
     loadBookings();
