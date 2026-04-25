@@ -93,7 +93,7 @@ router.post("/:id/confirm-downpayment", authenticate, authorize("ADMIN", "SUPER_
 // Staff & Service management
 router.patch("/assign/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
 router.post("/:id/assign-staff", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
-router.post("/:id/service-status", authenticate, updateServiceStatus);
+router.patch("/:id/service-status", authenticate, updateServiceStatus);
 
 // Cancellation flows
 router.patch("/cancel/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), cancelBooking);

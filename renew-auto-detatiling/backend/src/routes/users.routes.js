@@ -219,7 +219,7 @@ router.post("/me/request-delete", authenticate, async (req, res) => {
   }
 });
 
-router.all("*", (req, res) => {
+router.use((req, res) => {
   console.log(`[DEBUG] Unmatched route in users.routes.js: ${req.method} ${req.url}`);
   res.status(404).json({ success: false, message: `Route ${req.method} ${req.url} not found in users router` });
 });

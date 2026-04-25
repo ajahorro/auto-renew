@@ -15,7 +15,8 @@ import {
   Play, 
   CheckCircle2, 
   ArrowRight,
-  Info
+  Info,
+  XCircle
 } from "lucide-react";
 
 const StaffDashboard = () => {

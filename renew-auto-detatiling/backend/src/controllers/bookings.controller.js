@@ -818,8 +818,6 @@ const updateBookingStatus = async (req, res) => {
       }
     };
 
-    const actor = await prisma.user.findUnique({ where: { id: req.user?.id } });
-
     const result = await prisma.$transaction(async (tx) => {
       // 1. Update Booking
       const updateData = { 

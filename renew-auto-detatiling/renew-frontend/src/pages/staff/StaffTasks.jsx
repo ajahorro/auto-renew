@@ -38,7 +38,7 @@ const StaffTasks = () => {
     try {
       setUpdatingId(bookingId);
       // Staff should use the service-status endpoint
-      await API.post(`/bookings/${bookingId}/service-status`, { serviceStatus: status });
+      await API.patch(`/bookings/${bookingId}/service-status`, { serviceStatus: status });
       toast.success(`Service marked as ${status.toLowerCase()}`);
       await loadAssignedBookings();
     } catch (err) {
