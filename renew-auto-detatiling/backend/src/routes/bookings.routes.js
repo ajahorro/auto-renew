@@ -30,6 +30,11 @@ const {
   requestCancelBooking,
   processCancellationRequest
 } = require("../controllers/bookings.controller");
+const {
+  patchServiceStatus,
+  adminCompleteWithOverride,
+  bookingTimeline
+} = require("../controllers/bookingOperations.controller");
 
 /* ================= GET ROUTES (ADMIN & UTILITY) ================= */
 
@@ -93,7 +98,8 @@ router.post("/:id/confirm-downpayment", authenticate, authorize("ADMIN", "SUPER_
 // Staff & Service management
 router.patch("/assign/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
 router.post("/:id/assign-staff", authenticate, authorize("ADMIN", "SUPER_ADMIN"), assignStaff);
-router.patch("/:id/service-status", authenticate, updateServiceStatus);
+router.patch("/:id/service-status", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), patchServiceStatus);
+router.patch("/:id/admin-override-complete", authenticate, authorize("ADMIN", "SUPER_ADMIN"), adminCompleteWithOverride);
 
 // Cancellation flows
 router.patch("/cancel/:id", authenticate, authorize("ADMIN", "SUPER_ADMIN"), cancelBooking);
@@ -106,6 +112,7 @@ router.patch("/:id/cancel", authenticate, authorize("ADMIN", "SUPER_ADMIN"), can
 router.post("/:id/addon", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF", "CUSTOMER"), createAddonRequest);
 router.patch("/addon/:requestId/approve", authenticate, authorize("ADMIN", "SUPER_ADMIN"), approveAddonRequest);
 router.patch("/addon/:requestId/reject", authenticate, authorize("ADMIN", "SUPER_ADMIN"), rejectAddonRequest);
+router.get("/:id/timeline", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF", "CUSTOMER"), bookingTimeline);
 
 /* ================= CATCH-ALL ROUTES ================= */
 

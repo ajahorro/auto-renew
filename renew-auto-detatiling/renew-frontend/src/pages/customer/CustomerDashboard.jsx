@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import BookingStatusBadge from "../../components/BookingStatusBadge";
 import PaymentStatusBadge from "../../components/PaymentStatusBadge";
+import ServiceStatusBadge from "../../components/ServiceStatusBadge";
 
 const CustomerDashboard = () => {
   const canCancel = (status) => {
@@ -33,6 +34,7 @@ const CustomerDashboard = () => {
   const [booking, setBooking] = useState({
     id: null,
     status: "",
+    serviceStatus: "",
     paymentStatus: "",
     appointmentStart: null,
     services: [],
@@ -53,7 +55,7 @@ const CustomerDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   
   const emptyBooking = {
-    id: null, status: "", paymentStatus: "", appointmentStart: null,
+    id: null, status: "", serviceStatus: "", paymentStatus: "", appointmentStart: null,
     services: [], notes: "", totalAmount: 0, amountPaid: 0,
     customer: null, payments: [], vehicleType: "", plateNumber: "",
     contactNumber: "", email: "", paymentMethod: "CASH"
@@ -72,8 +74,7 @@ const CustomerDashboard = () => {
           return;
         }
 
-        const filtered = bookings.filter(b => b.status !== "CANCELLED");
-        const activeBooking = filtered.find(b => b.status !== "COMPLETED") || filtered[0];
+        const activeBooking = bookings.find(b => b.status !== "COMPLETED" && b.status !== "CANCELLED");
 
         if (activeBooking) {
           const services = activeBooking.items?.map(item => ({
@@ -84,6 +85,7 @@ const CustomerDashboard = () => {
           setBooking({
             id: activeBooking.id,
             status: activeBooking.status,
+            serviceStatus: activeBooking.serviceStatus,
             paymentStatus: activeBooking.paymentStatus,
             appointmentStart: activeBooking.appointmentStart,
             services,
@@ -126,8 +128,8 @@ const CustomerDashboard = () => {
     loadNotifications();
   }, []);
 
-  const total = booking.services.reduce((sum, s) => sum + (s.price || 0), 0);
-  const balance = total - booking.amountPaid;
+  const total = Number(booking.totalAmount || 0);
+  const balance = Math.max(0, total - Number(booking.amountPaid || 0));
 
   const cancelBooking = async () => {
     if (!booking.id) return;
@@ -143,7 +145,7 @@ const CustomerDashboard = () => {
     if (!confirmed) return;
 
     try {
-      const res = await API.patch(`/bookings/request-cancel/${booking.id}`, {
+      const res = await API.post(`/bookings/${booking.id}/cancel-request`, {
         reason: "Requested by customer from dashboard"
       });
       toast.success(res.data.message || "Cancellation request submitted");
@@ -176,6 +178,7 @@ const CustomerDashboard = () => {
               {booking.id && (
                 <div style={{ display: "flex", gap: "8px" }}>
                   <BookingStatusBadge status={booking.status} />
+                  <ServiceStatusBadge status={booking.serviceStatus} />
                   <PaymentStatusBadge status={booking.paymentStatus} />
                 </div>
               )}

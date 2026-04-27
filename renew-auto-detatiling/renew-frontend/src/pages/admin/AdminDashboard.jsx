@@ -2,7 +2,7 @@ import { useAuth } from "../../context/AuthContext";
 import API from "../../api/axios";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import AdminSidebar from "../../components/AdminSidebar";
+import AdminSideBar from "../../components/AdminSideBar";
 
 const AdminDashboard = () => {
   const { user } = useAuth();
@@ -62,7 +62,7 @@ const AdminDashboard = () => {
 
         const [bookingsRes, unassignedRes] = await Promise.all([
           API.get("/bookings?limit=5"),
-          API.get("/bookings?status=PENDING&limit=5")
+          API.get("/bookings/admin?status=SCHEDULED&unassigned=true&limit=5")
         ]);
         
         setBookings(Array.isArray(bookingsRes.data) ? bookingsRes.data : (bookingsRes.data.bookings || []));
@@ -100,7 +100,7 @@ const AdminDashboard = () => {
 
   return (
     <div style={styles.page}>
-      <AdminSidebar active="dashboard" />
+      <AdminSideBar active="dashboard" />
 
       <div style={styles.main}>
         <div style={styles.header}>

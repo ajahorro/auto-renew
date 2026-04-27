@@ -50,22 +50,84 @@ const notifyAdmins = async (title, message, actionType, actorId = null, actorNam
   }
 };
 
+/* HELPER: Convert Decimal fields to strings for JSON serialization */
+const serializeSettings = (settings) => {
+  if (!settings) return null;
+  
+  const serialized = { ...settings };
+  
+  // Convert Decimal fields to strings
+  const decimalFields = [
+    'downpaymentThreshold',
+    'downpaymentPercentage'
+  ];
+  
+  decimalFields.forEach(field => {
+    if (serialized[field] !== null && serialized[field] !== undefined) {
+      serialized[field] = serialized[field].toString();
+    }
+  });
+  
+  return serialized;
+};
+
 /* GET BUSINESS SETTINGS */
 const getBusinessSettings = async (req, res) => {
   try {
-    const settings = await prisma.businessSettings.findFirst();
+    let settings = await prisma.businessSettings.findFirst();
     
+    // If no settings found, create default ones
     if (!settings) {
-      return res.status(404).json({
-        success: false,
-        message: "Business settings not found"
-      });
+      console.log("[INFO] No business settings found. Creating defaults...");
+      
+      try {
+        settings = await prisma.businessSettings.create({
+          data: {
+            id: 1,
+            slotDurationMinutes: 60,
+            openingHour: 9,
+            closingHour: 18,
+            maxBookingsPerSlot: 3,
+            maxServicesPerBooking: 5,
+            cancellationWindowHours: 24,
+            paymentGracePeriodHours: 24,
+            pendingCleanupHours: 24,
+            startReminderDelayMinutes: 5,
+            notificationRetryLimit: 3
+          }
+        });
+        console.log("[INFO] Default business settings created successfully");
+      } catch (createError) {
+        console.error("[ERROR] Failed to create default settings:", createError.message);
+        // Return defaults as fallback
+        const defaultSettings = {
+          id: 1,
+          openingHour: 9,
+          closingHour: 18,
+          slotDurationMinutes: 60,
+          maxBookingsPerSlot: 3,
+          maxServicesPerBooking: 5,
+          downpaymentThreshold: "5000.00",
+          downpaymentPercentage: "0.50",
+          cancellationWindowHours: 24,
+          gcashNumber: null,
+          gcashName: null
+        
+        return res.json({
+          success: true,
+          settings: defaultSettings,
+          maxServicesPerBooking: defaultSettings.maxServicesPerBooking
+        });
+      }
     }
+
+    // Serialize the response to handle Decimal fields
+    const serializedSettings = serializeSettings(settings);
 
     res.json({
       success: true,
-      settings,
-      maxServicesPerBooking: settings.maxServicesPerBooking
+      settings: serializedSettings,
+      maxServicesPerBooking: serializedSettings.maxServicesPerBooking
     });
 
   } catch (error) {

@@ -148,7 +148,7 @@ const AdminBookingView = () => {
 
   // Payments awaiting verification
   const pendingPayments = (booking.payments || []).filter(p => p.status === "FOR_VERIFICATION" || p.status === "PENDING");
-  const approvedPayments = (booking.payments || []).filter(p => p.status === "APPROVED");
+  const approvedPayments = (booking.payments || []).filter(p => ["APPROVED", "PAID"].includes(p.status));
 
   return (
     <div style={S.page}>
@@ -273,14 +273,14 @@ const AdminBookingView = () => {
                       {p.proofImage && (
                         <div style={S.receiptBox}>
                           <Image size={14} color="var(--text-secondary)" />
-                          <a href={p.proofImage} target="_blank" rel="noopener noreferrer" style={S.receiptLink}>
+                          <a href={`${API.defaults.baseURL.replace("/api", "")}${p.proofImage}`} target="_blank" rel="noopener noreferrer" style={S.receiptLink}>
                             View Receipt
                           </a>
                           <img
-                            src={p.proofImage}
+                            src={`${API.defaults.baseURL.replace("/api", "")}${p.proofImage}`}
                             alt="Receipt"
                             style={S.receiptThumb}
-                            onClick={() => window.open(p.proofImage, "_blank")}
+                            onClick={() => window.open(`${API.defaults.baseURL.replace("/api", "")}${p.proofImage}`, "_blank")}
                           />
                         </div>
                       )}

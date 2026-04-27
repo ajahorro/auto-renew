@@ -5,12 +5,12 @@ const path = require("path");
 const authenticate = require("../middleware/auth.middleware");
 const authorize = require("../middleware/rbac.middleware");
 const {
-  createPayment,
+  createPaymentReceipt,
   verifyPayment,
   createManualPayment,
-  getPayments,
-  getPendingVerifications,
-  bulkVerifyPayments
+  listPayments,
+  listPendingVerification,
+  getAdminPaymentAnalytics
 } = require("../controllers/payment.controller");
 
 const storage = multer.diskStorage({
@@ -27,9 +27,11 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|pdf/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowedExtensions = new Set([".jpeg", ".jpg", ".png", ".pdf"]);
+    const allowedMimeTypes = new Set(["image/jpeg", "image/jpg", "image/png", "application/pdf"]);
+    const extname = allowedExtensions.has(extension);
+    const mimetype = allowedMimeTypes.has(file.mimetype);
     if (extname && mimetype) {
       return cb(null, true);
     }
@@ -37,16 +39,16 @@ const upload = multer({
   }
 });
 
-router.post("/", authenticate, upload.single("receipt"), createPayment);
+router.get("/analytics", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getAdminPaymentAnalytics);
 
-router.get("/", authenticate, getPayments);
+router.post("/", authenticate, upload.single("receipt"), createPaymentReceipt);
 
-router.get("/pending", authenticate, authorize("ADMIN", "SUPER_ADMIN"), getPendingVerifications);
+router.get("/", authenticate, listPayments);
+
+router.get("/pending", authenticate, authorize("ADMIN", "SUPER_ADMIN"), listPendingVerification);
 
 router.patch("/:id/verify", authenticate, authorize("ADMIN", "SUPER_ADMIN"), verifyPayment);
 
-router.post("/bulk-verify", authenticate, authorize("ADMIN", "SUPER_ADMIN"), bulkVerifyPayments);
-
-router.post("/manual", authenticate, authorize("ADMIN", "SUPER_ADMIN"), createManualPayment);
+router.post("/manual", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), createManualPayment);
 
 module.exports = router;

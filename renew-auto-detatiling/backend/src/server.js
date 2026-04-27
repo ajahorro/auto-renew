@@ -3,12 +3,23 @@ const express = require("express");
 const cors = require("cors");
 const cron = require("node-cron");
 const bcrypt = require("bcryptjs");
+const { PrismaClient, Prisma } = require("@prisma/client");
+const Decimal = Prisma.Decimal;
+
+// Fix for Decimal serialization in JSON
+// This prevents 500 errors when returning models with Decimal fields
+if (typeof BigInt.prototype.toJSON !== "function") {
+  BigInt.prototype.toJSON = function() { return this.toString() };
+}
+// For Prisma Decimal
+if (typeof Decimal.prototype.toJSON !== "function") {
+  Decimal.prototype.toJSON = function() { return this.toString() };
+}
 
 const prisma = require("./config/prisma");
 const ensureBusinessSettings = require("./config/defaultSettings");
 const normalizeLegacyBookingData = require("./config/normalizeLegacyData");
-const sendBookingReminders = require("./jobs/bookingReminders");
-const syncBookingLifecycleStates = require("./jobs/bookingLifecycle");
+const { runAutomationCycle } = require("./services/automation.service");
 const rateLimiter = require("./middleware/rateLimiter.middleware");
 
 // Routes
@@ -38,6 +49,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use("/uploads", express.static(require("path").join(__dirname, "../uploads")));
 app.use((req, res, next) => {
   console.log(`[DEBUG] ${req.method} ${req.url}`);
   next();
@@ -160,16 +172,10 @@ async function startServer() {
     // 2. Start scheduled tasks
     console.log("[CRON] Initializing scheduled jobs...");
     
-    // Booking reminders (runs every 30 mins)
-    cron.schedule("*/30 * * * *", async () => {
-      console.log("[CRON] Running booking reminders check...");
-      await sendBookingReminders();
-    });
-
-    // Lifecycle sync (runs every 15 mins)
-    cron.schedule("*/15 * * * *", async () => {
-      console.log("[CRON] Syncing booking lifecycle states...");
-      await syncBookingLifecycleStates();
+    cron.schedule("*/5 * * * *", async () => {
+      console.log("[CRON] Running automation cycle...");
+      const result = await runAutomationCycle();
+      console.log("[CRON] Automation result:", result);
     });
 
     // 3. Listen

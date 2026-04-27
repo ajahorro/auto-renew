@@ -1,113 +1,233 @@
 const prisma = require("../config/prisma");
 const { sendEmail } = require("./email.service");
 
-/**
- * Centralised notification service.
- *
- * Every controller imports from here instead of defining its own
- * createNotification / notifyAdmins helpers.
- *
- * Handles:
- *  - User preference checks (notifyWeb / notifyEmail)
- *  - In-app notification creation
- *  - Email dispatch (non-blocking, fire-and-forget)
- */
+async function sendSms(destination, message) {
+  const settings = await prisma.businessSettings.findFirst();
+  if (!settings?.smsApiUrl) {
+    return {
+      success: false,
+      error: "SMS provider is not configured"
+    };
+  }
 
-/**
- * Create a notification for a single user.
- * Respects the user's notifyWeb / notifyEmail preferences.
- *
- * @param {string}  userId
- * @param {object}  data          - { title, message, type, actionType, actorId, actorName, targetId, targetName }
- * @param {object}  [tx]          - Optional Prisma transaction client
- * @returns {Promise<object|null>} The created notification, or null if skipped
- */
-async function createNotification(userId, data, tx) {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true, notifyEmail: true, notifyWeb: true }
+  const response = await fetch(settings.smsApiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": settings.smsApiKey ? `Bearer ${settings.smsApiKey}` : undefined
+    },
+    body: JSON.stringify({
+      to: destination,
+      senderId: settings.smsSenderId || undefined,
+      message
+    })
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    return {
+      success: false,
+      error: `SMS provider returned ${response.status}: ${body}`
+    };
+  }
+
+  const data = await response.json().catch(() => ({}));
+  return {
+    success: true,
+    messageId: data?.messageId || data?.id || null
+  };
+}
+
+async function enqueueDispatches(user, notification, data, tx) {
+  const settings = await tx.businessSettings.findFirst();
+  const maxAttempts = settings?.notificationRetryLimit || 3;
+  const dispatches = [];
+
+  if (user.notifyWeb !== false) {
+    dispatches.push({
+      notificationId: notification?.id || null,
+      recipientUserId: user.id,
+      channel: "WEB",
+      type: data.type || "GENERAL",
+      status: "SENT",
+      destination: user.id,
+      payload: { title: data.title, message: data.message },
+      maxAttempts,
+      attemptCount: 1,
+      deliveredAt: new Date(),
+      lastAttemptAt: new Date()
     });
+  }
 
-    if (!user) return null;
+  if (user.notifyEmail !== false && user.email) {
+    dispatches.push({
+      notificationId: notification?.id || null,
+      recipientUserId: user.id,
+      channel: "EMAIL",
+      type: data.type || "GENERAL",
+      status: "PENDING",
+      destination: user.email,
+      subject: `[RENEW Auto Detailing] ${data.title}`,
+      payload: { html: data.emailHtml, text: data.message },
+      maxAttempts
+    });
+  }
 
-    const hasWeb = user.notifyWeb !== false;
-    const hasEmail = user.notifyEmail !== false;
+  if (data.enableSms && user.phone) {
+    dispatches.push({
+      notificationId: notification?.id || null,
+      recipientUserId: user.id,
+      channel: "SMS",
+      type: data.type || "GENERAL",
+      status: "PENDING",
+      destination: user.phone,
+      payload: { message: data.smsMessage || data.message },
+      maxAttempts
+    });
+  }
 
-    if (!hasWeb && !hasEmail) return null;
+  if (dispatches.length === 0) {
+    return [];
+  }
 
-    const db = tx || prisma;
+  const created = [];
+  for (const dispatch of dispatches) {
+    created.push(await tx.notificationDispatch.create({ data: dispatch }));
+  }
 
-    const inAppNotification = hasWeb
-      ? await db.notification.create({
-          data: {
-            userId,
-            title: data.title,
-            message: data.message,
-            type: data.type || "GENERAL",
-            actionType: data.actionType || null,
-            actorId: data.actorId || null,
-            actorName: data.actorName || null,
-            targetId: data.targetId || null,
-            targetName: data.targetName || null
-          }
-        })
-      : null;
+  return created;
+}
 
-    if (hasEmail && user.email) {
-      const emailSubject = `[RENEW Auto Detailing] ${data.title}`;
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #1e40af;">${data.title}</h2>
-          <p style="color: #374151; font-size: 16px;">${data.message}</p>
-          <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
-            Log in to your account for more details.
-          </p>
-        </div>
-      `;
+async function dispatchNotification(notificationDispatchId) {
+  const dispatch = await prisma.notificationDispatch.findUnique({
+    where: { id: notificationDispatchId }
+  });
 
-      sendEmail(user.email, emailSubject, emailHtml).catch(err => {
-        console.error("Email send failed:", err.message);
-      });
+  if (!dispatch || dispatch.status === "SENT") {
+    return dispatch;
+  }
+
+  let result;
+  if (dispatch.channel === "EMAIL") {
+    const payload = dispatch.payload || {};
+    result = await sendEmail(dispatch.destination, dispatch.subject || "[RENEW Auto Detailing]", payload.html || `<p>${payload.text || ""}</p>`);
+  } else if (dispatch.channel === "SMS") {
+    result = await sendSms(dispatch.destination, dispatch.payload?.message || "");
+  } else {
+    result = { success: true };
+  }
+
+  const now = new Date();
+  const nextAttemptCount = dispatch.attemptCount + 1;
+  const exceeded = nextAttemptCount >= dispatch.maxAttempts;
+
+  return prisma.notificationDispatch.update({
+    where: { id: dispatch.id },
+    data: result.success ? {
+      status: "SENT",
+      deliveredAt: now,
+      lastAttemptAt: now,
+      attemptCount: nextAttemptCount,
+      failureReason: null,
+      providerMessageId: result.messageId || null
+    } : {
+      status: exceeded ? "FAILED" : "RETRYING",
+      attemptCount: nextAttemptCount,
+      lastAttemptAt: now,
+      nextRetryAt: exceeded ? null : new Date(now.getTime() + 5 * 60 * 1000),
+      failureReason: result.error || "Notification dispatch failed"
     }
+  });
+}
 
-    return inAppNotification;
-  } catch (error) {
-    console.error("Failed to create notification:", error);
+async function processPendingNotifications() {
+  const pending = await prisma.notificationDispatch.findMany({
+    where: {
+      status: { in: ["PENDING", "RETRYING"] },
+      OR: [
+        { nextRetryAt: null },
+        { nextRetryAt: { lte: new Date() } }
+      ]
+    },
+    orderBy: { createdAt: "asc" },
+    take: 50
+  });
+
+  for (const dispatch of pending) {
+    await dispatchNotification(dispatch.id);
+  }
+
+  return pending.length;
+}
+
+async function createNotification(userId, data, tx = null) {
+  const db = tx || prisma;
+  const user = await db.user.findUnique({
+    where: { id: String(userId) },
+    select: {
+      id: true,
+      email: true,
+      phone: true,
+      notifyEmail: true,
+      notifyWeb: true
+    }
+  });
+
+  if (!user) {
     return null;
   }
-}
 
-/**
- * Notify all active admins (ADMIN + SUPER_ADMIN).
- *
- * @param {object} data - Notification data (same shape as createNotification)
- * @param {object} [tx] - Optional Prisma transaction client
- */
-async function notifyAdmins(data, tx) {
-  try {
-    const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
-    });
-    for (const admin of admins) {
-      await createNotification(admin.id, data, tx);
+  const notification = await db.notification.create({
+    data: {
+      userId: user.id,
+      title: data.title,
+      message: data.message,
+      type: data.type || "GENERAL",
+      relatedId: data.relatedId || null,
+      actionType: data.actionType || null,
+      targetId: data.targetId || null,
+      targetName: data.targetName || null,
+      actorId: data.actorId || null,
+      actorName: data.actorName || null
     }
-  } catch (error) {
-    console.error("Failed to notify admins:", error);
+  });
+
+  const dispatches = await enqueueDispatches(user, notification, data, db);
+
+  if (!tx) {
+    for (const dispatch of dispatches.filter((entry) => entry.status !== "SENT")) {
+      dispatchNotification(dispatch.id).catch((error) => {
+        console.error("Notification dispatch error:", error);
+      });
+    }
   }
+
+  return notification;
 }
 
-/**
- * Convenience wrapper: notify admins about a booking event.
- *
- * @param {number} bookingId
- * @param {string} title
- * @param {string} message
- * @param {string} [actorId]
- * @param {string} [actorName]
- */
+async function notifyAdmins(data, tx = null) {
+  const db = tx || prisma;
+  const admins = await db.user.findMany({
+    where: {
+      role: { in: ["ADMIN", "SUPER_ADMIN"] },
+      isActive: true
+    },
+    select: { id: true }
+  });
+
+  const notifications = [];
+  for (const admin of admins) {
+    notifications.push(await createNotification(admin.id, {
+      ...data,
+      enableSms: data.enableSms ?? true
+    }, tx));
+  }
+
+  return notifications;
+}
+
 async function notifyAdminsBookingUpdated(bookingId, title, message, actorId, actorName) {
-  await notifyAdmins({
+  return notifyAdmins({
     title,
     message,
     type: "BOOKING",
@@ -115,12 +235,15 @@ async function notifyAdminsBookingUpdated(bookingId, title, message, actorId, ac
     actorId: actorId || null,
     actorName: actorName || null,
     targetId: String(bookingId),
-    targetName: `Booking #${bookingId}`
+    targetName: `Booking #${bookingId}`,
+    enableSms: true
   });
 }
 
 module.exports = {
   createNotification,
   notifyAdmins,
-  notifyAdminsBookingUpdated
+  notifyAdminsBookingUpdated,
+  processPendingNotifications,
+  dispatchNotification
 };

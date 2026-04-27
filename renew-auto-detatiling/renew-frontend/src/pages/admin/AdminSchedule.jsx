@@ -1,13 +1,18 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../api/axios";
-import AdminSidebar from "../../components/AdminSidebar";
+import AdminSideBar from "../../components/AdminSideBar";
 
 const AdminSchedule = () => {
   const navigate = useNavigate();
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const toSlotDate = (hour) => {
+    const [year, month, day] = date.split("-").map(Number);
+    return new Date(year, month - 1, day, hour, 0, 0, 0);
+  };
 
   // Load daily schedule when date changes
   useEffect(() => {
@@ -34,19 +39,21 @@ const AdminSchedule = () => {
 
   // Check if a slot has a booking (show if booking spans this hour)
   const getSlotBooking = (hour) => {
+    const slotStart = toSlotDate(hour);
+    const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
     return bookings.find(b => {
       if (!b.appointmentStart || !b.appointmentEnd) return false;
-      const startHour = new Date(b.appointmentStart).getHours();
-      const endHour = new Date(b.appointmentEnd).getHours();
-      return hour >= startHour && hour < endHour;
+      const start = new Date(b.appointmentStart);
+      const end = new Date(b.appointmentEnd);
+      return start < slotEnd && end > slotStart;
     });
   };
 
   // Check if this is the start of a booking (to show full card)
   const isBookingStart = (booking, hour) => {
     if (!booking) return false;
-    const startHour = new Date(booking.appointmentStart).getHours();
-    return startHour === hour;
+    const start = new Date(booking.appointmentStart);
+    return start >= toSlotDate(hour) && start < new Date(toSlotDate(hour).getTime() + 60 * 60 * 1000);
   };
 
   // Get booking duration in hours
@@ -54,7 +61,7 @@ const AdminSchedule = () => {
     if (!booking) return 0;
     const start = new Date(booking.appointmentStart);
     const end = new Date(booking.appointmentEnd);
-    return Math.ceil((end - start) / (1000 * 60 * 60));
+    return Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60)));
   };
 
   const getStatusColor = (status) => {
@@ -71,7 +78,7 @@ const AdminSchedule = () => {
 
   return (
     <div style={styles.page}>
-      <AdminSidebar active="schedule" />
+      <AdminSideBar active="schedule" />
 
       <div style={styles.main}>
         <div style={styles.header}>

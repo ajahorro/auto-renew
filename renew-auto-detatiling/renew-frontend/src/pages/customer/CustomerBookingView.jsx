@@ -216,7 +216,7 @@ const CustomerBookingView = () => {
 
             {/* ACTIONS */}
             <div style={styles.actionSection}>
-              {booking.status === "PENDING" || booking.status === "SCHEDULED" ? (
+              {["PENDING", "SCHEDULED", "CONFIRMED"].includes(booking.status) ? (
                 <button style={styles.cancelBtn} onClick={requestCancel}>
                   <AlertTriangle size={18} />
                   Request Cancellation

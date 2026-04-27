@@ -16,13 +16,19 @@ const PaymentStatusBadge = ({ status }) => {
     },
     PARTIALLY_PAID: {
       icon: <DollarSign size={12} />,
-      label: "Downpayment Paid",
+      label: "Partially Paid",
       color: "#0ea5e9",
       textColor: "#fff"
     },
     PAID: {
       icon: <CheckCircle2 size={12} />,
-      label: "Completed",
+      label: "Paid",
+      color: "#22c55e",
+      textColor: "#fff"
+    },
+    APPROVED: {
+      icon: <CheckCircle2 size={12} />,
+      label: "Paid",
       color: "#22c55e",
       textColor: "#fff"
     },
@@ -30,6 +36,12 @@ const PaymentStatusBadge = ({ status }) => {
       icon: <XCircle size={12} />,
       label: "Rejected",
       color: "#ef4444",
+      textColor: "#fff"
+    },
+    FAILED: {
+      icon: <AlertCircle size={12} />,
+      label: "Failed",
+      color: "#b91c1c",
       textColor: "#fff"
     },
     REFUNDED: {

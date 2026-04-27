@@ -11,37 +11,35 @@ const AdminPayments = () => {
   const [filter, setFilter] = useState("for_verification");
   const [rejectModal, setRejectModal] = useState({ open: false, paymentId: null });
   const [rejectReason, setRejectReason] = useState("");
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const previewUrl = preview?.url || null;
+  const setPreviewUrl = (value) => setPreview(value ? { url: value, mimeType: "" } : null);
+
+  const loadPayments = useCallback(async () => {
+    setLoading(true);
+    setPayments([]); 
+    try {
+      let endpoint;
+      if (filter === "for_verification") {
+        endpoint = "/payments/pending"; 
+      } else if (filter === "all") {
+        endpoint = "/payments";
+      } else {
+        endpoint = `/payments?status=${filter.toUpperCase()}`;
+      }
+      const res = await API.get(endpoint);
+      setPayments(res.data.payments || []);
+    } catch (err) {
+      console.error("Fetch payments error:", err);
+      toast.error("Failed to load payments");
+    } finally {
+      setLoading(false);
+    }
+  }, [filter]);
 
   useEffect(() => {
-    let isMounted = true;
-    const load = async () => {
-      setLoading(true);
-      setPayments([]); 
-      try {
-        let endpoint;
-        if (filter === "for_verification") {
-          endpoint = "/payments/pending"; 
-        } else if (filter === "all") {
-          endpoint = "/payments";
-        } else {
-          endpoint = `/payments?status=${filter.toUpperCase()}`;
-        }
-        const res = await API.get(endpoint);
-        if (isMounted) {
-          setPayments(res.data.payments || []);
-        }
-      } catch (err) {
-        console.error("Fetch payments error:", err);
-        toast.error("Failed to load payments");
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    load();
-    return () => { isMounted = false; };
-  }, [filter]);
+    loadPayments();
+  }, [loadPayments]);
 
   const handleAction = async (paymentId, action, reason = "") => {
     try {
@@ -51,7 +49,7 @@ const AdminPayments = () => {
         action === "reject"  ? "Payment rejected." :
         "Resubmission requested."
       );
-      fetchPayments();
+      loadPayments();
     } catch (err) {
       toast.error(err.response?.data?.message || "Action failed");
     }
@@ -72,7 +70,7 @@ const AdminPayments = () => {
 
   const TABS = [
     { key: "for_verification", label: "For Verification" },
-    { key: "approved",         label: "Approved" },
+    { key: "paid",             label: "Approved" },
     { key: "rejected",         label: "Rejected" },
     { key: "all",              label: "All" }
   ];
@@ -186,7 +184,13 @@ const AdminPayments = () => {
                   </div>
                   <div style={{ ...S.cell, flex: 0.8 }}>
                     {payment.proofImage ? (
-                      <button style={S.receiptBtn} onClick={() => setPreviewUrl(payment.proofImage)}>
+                      <button
+                        style={S.receiptBtn}
+                        onClick={() => setPreview({
+                          url: `${API.defaults.baseURL.replace("/api", "")}${payment.proofImage}`,
+                          mimeType: payment.proofMimeType || ""
+                        })}
+                      >
                         <Eye size={14} /> View
                       </button>
                     ) : (
@@ -218,8 +222,8 @@ const AdminPayments = () => {
         )}
       </div>
 
-      {previewUrl && (
-        <div style={S.overlay} onClick={() => setPreviewUrl(null)}>
+      {preview && (
+        <div style={S.overlay} onClick={() => setPreview(null)}>
           <div style={S.previewModal} onClick={e => e.stopPropagation()}>
             <div style={S.previewHeader}>
               <span style={{ fontWeight: 700 }}>Receipt Preview</span>

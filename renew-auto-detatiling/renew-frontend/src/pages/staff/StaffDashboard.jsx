@@ -16,7 +16,8 @@ import {
   CheckCircle2, 
   ArrowRight,
   Info,
-  XCircle
+  XCircle,
+  History
 } from "lucide-react";
 
 const StaffDashboard = () => {
@@ -46,17 +47,33 @@ const StaffDashboard = () => {
   }, [loadAssignedBookings]);
 
   // Staff updates SERVICE status only (not booking status)
-  const updateServiceStatus = async (bookingId, serviceStatus) => {
+  const updateServiceStatus = async (bookingId, serviceStatus, booking = null) => {
+    const action = serviceStatus === "ONGOING" ? "start" : "finish";
+    const confirmed = window.confirm(`Are you sure you want to ${action} this service?`);
+    if (!confirmed) return;
+
     try {
       setUpdatingId(bookingId);
       await API.patch(`/bookings/${bookingId}/service-status`, { serviceStatus });
       toast.success(serviceStatus === "ONGOING" ? "Service started!" : "Service completed!");
       await loadAssignedBookings();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to update service status");
+      toast.error(err.response?.data?.message || `Failed to ${action} service`);
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  const canStartService = (b) => {
+    if (!["PARTIALLY_PAID", "PAID", "APPROVED"].includes(b.paymentStatus)) {
+      return { can: false, reason: "Payment Required" };
+    }
+    
+    const now = new Date();
+    const startTime = new Date(b.appointmentStart);
+    if (now < startTime) return { can: false, reason: "Too Early" };
+    
+    return { can: true };
   };
 
   const formatDate = (dateStr) => {
@@ -177,23 +194,29 @@ const StaffDashboard = () => {
                             <div style={styles.actionRow}>
                               {b.serviceStatus === "NOT_STARTED" && (
                                 <button
-                                  style={styles.startBtn}
-                                  disabled={updatingId === b.id}
-                                  onClick={() => updateServiceStatus(b.id, "ONGOING")}
+                                  style={{
+                                    ...styles.startBtn,
+                                    opacity: (!canStartService(b).can || updatingId === b.id) ? 0.5 : 1,
+                                    cursor: (!canStartService(b).can || updatingId === b.id) ? "not-allowed" : "pointer"
+                                  }}
+                                  disabled={updatingId === b.id || !canStartService(b).can}
+                                  onClick={() => updateServiceStatus(b.id, "ONGOING", b)}
+                                  title={canStartService(b).reason || ""}
                                 >
                                   <Play size={14} />
-                                  Start Service
+                                  {canStartService(b).can ? "Start Service" : canStartService(b).reason}
                                 </button>
                               )}
 
                               {b.serviceStatus === "ONGOING" && (
                                 <button
                                   style={styles.completeBtn}
-                                  disabled={updatingId === b.id}
-                                  onClick={() => updateServiceStatus(b.id, "COMPLETED")}
+                                  disabled={updatingId === b.id || !["PAID", "APPROVED"].includes(b.paymentStatus)}
+                                  onClick={() => updateServiceStatus(b.id, "COMPLETED", b)}
+                                  title={["PAID", "APPROVED"].includes(b.paymentStatus) ? "" : "Full payment or admin override required"}
                                 >
                                   <CheckCircle2 size={14} />
-                                  Finish Service
+                                  {["PAID", "APPROVED"].includes(b.paymentStatus) ? "Finish Service" : "Payment Incomplete"}
                                 </button>
                               )}
 
@@ -521,6 +544,5 @@ const styles = {
   }
 };
 
-const History = ({ size, color, style }) => <ClipboardList size={size} color={color} style={style} />;
 
 export default StaffDashboard;

@@ -11,6 +11,9 @@ const LOG_REQUEST = (req, context) => {
 };
 
 const rateLimitStore = new Map();
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_MAX_RESENDS = 5;
+const OTP_LOCKOUT_MS = 15 * 60 * 1000;
 
 const checkRateLimit = (email, maxAttempts = 3, windowMs = 10 * 60 * 1000) => {
   const key = `register:${email}`;
@@ -35,6 +38,32 @@ const checkRateLimit = (email, maxAttempts = 3, windowMs = 10 * 60 * 1000) => {
 const generateOtp = () => {
   return crypto.randomInt(100000, 999999).toString();
 };
+
+const isOtpLocked = (record) => record?.lockedUntil && new Date(record.lockedUntil) > new Date();
+
+const getOtpLockMessage = (record) => {
+  const waitSeconds = Math.ceil((new Date(record.lockedUntil).getTime() - Date.now()) / 1000);
+  return `Too many invalid OTP attempts. Please wait ${Math.max(waitSeconds, 1)} seconds.`;
+};
+
+async function markOtpFailure(model, id) {
+  const current = await prisma[model].findUnique({ where: { id } });
+  const attemptsFieldName = model === "pendingRegistration" ? "otpAttempts" : "attempts";
+  const currentAttempts = Number(current?.[attemptsFieldName] || 0);
+  const nextAttempts = currentAttempts + 1;
+  const data = {
+    [attemptsFieldName]: nextAttempts
+  };
+
+  if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+    data.lockedUntil = new Date(Date.now() + OTP_LOCKOUT_MS);
+  }
+
+  return prisma[model].update({
+    where: { id },
+    data
+  });
+}
 
 
 
@@ -170,17 +199,25 @@ const verifyRegistrationOtp = async (req, res) => {
       }
     });
 
-    if (!pendingReg) {
-      return res.status(400).json({
-        success: false,
-        message: "Registration session expired or invalid. Please register again."
-      });
-    }
+      if (!pendingReg) {
+        return res.status(400).json({
+          success: false,
+          message: "Registration session expired or invalid. Please register again."
+        });
+      }
 
-    if (pendingReg.otp !== otp.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid verification code"
+      if (isOtpLocked(pendingReg)) {
+        return res.status(429).json({
+          success: false,
+          message: getOtpLockMessage(pendingReg)
+        });
+      }
+
+      if (pendingReg.otp !== otp.trim()) {
+        await markOtpFailure("pendingRegistration", pendingReg.id);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid verification code"
       });
     }
 
@@ -276,20 +313,38 @@ const resendRegistrationOtp = async (req, res) => {
       where: { email }
     });
 
-    if (!pendingReg) {
-      return res.status(400).json({
-        success: false,
-        message: "No pending registration found. Please register again."
+      if (!pendingReg) {
+        return res.status(400).json({
+          success: false,
+          message: "No pending registration found. Please register again."
+        });
+      }
+
+      if (isOtpLocked(pendingReg)) {
+        return res.status(429).json({
+          success: false,
+          message: getOtpLockMessage(pendingReg)
+        });
+      }
+
+      if (Number(pendingReg.resendCount || 0) >= OTP_MAX_RESENDS) {
+        return res.status(429).json({
+          success: false,
+          message: "OTP resend limit reached. Please restart registration."
+        });
+      }
+
+      const newOtp = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await prisma.pendingRegistration.update({
+        where: { id: pendingReg.id },
+        data: {
+          otp: newOtp,
+          expiresAt,
+          resendCount: { increment: 1 }
+        }
       });
-    }
-
-    const newOtp = generateOtp();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-    await prisma.pendingRegistration.update({
-      where: { id: pendingReg.id },
-      data: { otp: newOtp, expiresAt }
-    });
 
     const emailResult = await sendOtpEmail(email, newOtp, "Registration");
 
@@ -482,21 +537,35 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    const verification = await prisma.emailVerification.findFirst({
-      where: {
-        email,
-        otp,
-        type: "PASSWORD_RESET",
-        expiresAt: { gt: new Date() }
-      }
-    });
-
-    if (!verification) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired reset code"
+      const verification = await prisma.emailVerification.findFirst({
+        where: {
+          email,
+          type: "PASSWORD_RESET",
+          expiresAt: { gt: new Date() }
+        }
       });
-    }
+
+      if (!verification) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid or expired reset code"
+        });
+      }
+
+      if (isOtpLocked(verification)) {
+        return res.status(429).json({
+          success: false,
+          message: getOtpLockMessage(verification)
+        });
+      }
+
+      if (verification.otp !== otp) {
+        await markOtpFailure("emailVerification", verification.id);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid or expired reset code"
+        });
+      }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
@@ -903,18 +972,29 @@ const verifyEmailOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "Email and OTP are required" });
     }
 
-    const verification = await prisma.emailVerification.findFirst({
-      where: {
-        email,
-        otp,
-        type: "EMAIL_CHANGE",
-        expiresAt: { gt: new Date() }
-      }
-    });
+      const verification = await prisma.emailVerification.findFirst({
+        where: {
+          email,
+          type: "EMAIL_CHANGE",
+          expiresAt: { gt: new Date() }
+        }
+      });
 
-    if (!verification) {
-      return res.status(400).json({ success: false, message: "Invalid or expired verification code" });
-    }
+      if (!verification) {
+        return res.status(400).json({ success: false, message: "Invalid or expired verification code" });
+      }
+
+      if (isOtpLocked(verification)) {
+        return res.status(429).json({
+          success: false,
+          message: getOtpLockMessage(verification)
+        });
+      }
+
+      if (verification.otp !== otp) {
+        await markOtpFailure("emailVerification", verification.id);
+        return res.status(400).json({ success: false, message: "Invalid or expired verification code" });
+      }
 
     await prisma.user.update({
       where: { id: userId },

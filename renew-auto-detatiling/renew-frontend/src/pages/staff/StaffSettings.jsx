@@ -51,7 +51,7 @@ const StaffSettings = () => {
   const saveProfile = async () => {
     setSaving(true);
     try {
-      const res = await API.patch("/users/me", profile);
+      const res = await API.patch("/users/me", { fullName: profile.fullName });
       if (res.data.user) {
         localStorage.setItem("user", JSON.stringify(res.data.user));
         toast.success("Profile updated");

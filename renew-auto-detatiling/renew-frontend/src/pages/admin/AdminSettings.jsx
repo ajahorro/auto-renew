@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import AdminSidebar from "../../components/AdminSidebar";
+import AdminSideBar from "../../components/AdminSideBar";
 import API from "../../api/axios";
 import toast from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
@@ -30,6 +30,7 @@ const AdminSettings = () => {
   const [newStaff, setNewStaff] = useState({ email: "", password: "", fullName: "", role: "STAFF" });
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingUser, setDeletingUser] = useState(null);
+  const [selectedQR, setSelectedQR] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -79,7 +80,7 @@ const AdminSettings = () => {
   const saveProfile = async () => {
     setSaving(true);
     try {
-      const res = await API.patch("/users/me", profile);
+      const res = await API.patch("/users/me", { fullName: profile.fullName });
       if (res.data.user) {
         localStorage.setItem("user", JSON.stringify(res.data.user));
         toast.success("Profile updated");
@@ -161,8 +162,22 @@ const AdminSettings = () => {
     }
     setSaving(true);
     try {
-      await API.patch("/business-settings", businessSettings);
+      const formData = new FormData();
+      Object.keys(businessSettings).forEach(key => {
+        if (businessSettings[key] !== undefined && businessSettings[key] !== null && key !== "gcashQR") {
+          formData.append(key, businessSettings[key]);
+        }
+      });
+      if (selectedQR) {
+        formData.append("gcashQR", selectedQR);
+      }
+      
+      await API.patch("/business-settings", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
       toast.success("Business settings saved");
+      loadData();
+      setSelectedQR(null);
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to save");
     } finally {
@@ -211,14 +226,13 @@ const AdminSettings = () => {
   const tabs = [
     { id: "profile", label: "Profile" },
     { id: "theme", label: "Theme" },
-    { id: "staff", label: "Staff Management" },
     { id: "business", label: "Business Settings" },
     { id: "terms", label: "Terms & Conditions" }
   ];
 
   return (
     <div style={pageStyles.page}>
-      <AdminSidebar active="settings" />
+      <AdminSideBar active="settings" />
       <div style={pageStyles.main}>
         <h1 style={pageStyles.title}>Settings</h1>
 
@@ -411,168 +425,6 @@ const AdminSettings = () => {
               </div>
             )}
 
-            {activeTab === "staff" && (
-              <div>
-                <div style={styles.contentHeader}>
-                  <h2 style={styles.sectionHeader}>Staff Accounts</h2>
-                  <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
-                    + Add Staff
-                  </button>
-                </div>
-
-                <div style={styles.tableCard}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr style={styles.tableHeaderRow}>
-                        <th style={styles.tableHeader}>Name</th>
-                        <th style={styles.tableHeader}>Email</th>
-                        <th style={styles.tableHeader}>Role</th>
-                        <th style={styles.tableHeader}>Status</th>
-                        <th style={styles.tableHeader}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {staffList.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" style={styles.emptyCell}>
-                            No staff accounts yet. Click "Add Staff" to create one.
-                          </td>
-                        </tr>
-                      ) : (
-                        staffList.map(user => (
-                          <tr key={user.id} style={styles.tableRow}>
-                            <td style={styles.tableCell}>{user.fullName}</td>
-                            <td style={styles.tableCell}>{user.email}</td>
-                            <td style={styles.tableCell}>
-                              <span style={{
-                                ...styles.roleBadge,
-                                background: user.role === "ADMIN" ? "#8b5cf6" : "#f59e0b"
-                              }}>
-                                {user.role}
-                              </span>
-                            </td>
-                            <td style={styles.tableCell}>
-                              <span style={{
-                                ...styles.statusBadge,
-                                background: user.isActive ? "#22c55e" : "#ef4444"
-                              }}>
-                                {user.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-                            <td style={styles.tableCell}>
-                              <button 
-                                style={{
-                                  ...styles.actionBtn,
-                                  background: user.isActive ? "#ef4444" : "#22c55e"
-                                }}
-                                onClick={() => toggleUserStatus(user.id, user.isActive)}
-                              >
-                                {user.isActive ? "Deactivate" : "Activate"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{...styles.contentHeader, marginTop: "40px"}}>
-                  <h2 style={styles.sectionHeader}>Customer Accounts</h2>
-                </div>
-
-                <div style={styles.tableCard}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr style={styles.tableHeaderRow}>
-                        <th style={styles.tableHeader}>Name</th>
-                        <th style={styles.tableHeader}>Email</th>
-                        <th style={styles.tableHeader}>Status</th>
-                        <th style={styles.tableHeader}>Created</th>
-                        <th style={styles.tableHeader}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customerList.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" style={styles.emptyCell}>
-                            No customer accounts found.
-                          </td>
-                        </tr>
-                      ) : (
-                        customerList.map(user => (
-                          <tr key={user.id} style={styles.tableRow}>
-                            <td style={styles.tableCell}>{user.fullName}</td>
-                            <td style={styles.tableCell}>{user.email}</td>
-                            <td style={styles.tableCell}>
-                              <span style={{
-                                ...styles.statusBadge,
-                                background: user.isActive ? "#22c55e" : "#ef4444"
-                              }}>
-                                {user.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-                            <td style={styles.tableCell}>
-                              {new Date(user.createdAt).toLocaleDateString()}
-                            </td>
-                            <td style={styles.tableCell}>
-                              <span style={styles.helperText}>Protected Account</span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {showAddModal && (
-                  <div style={styles.modalOverlay} onClick={() => setShowAddModal(false)}>
-                    <div style={styles.modal} onClick={e => e.stopPropagation()}>
-                      <h3 style={styles.modalTitle}>Add New Staff</h3>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Full Name</label>
-                        <input
-                          placeholder="Full Name"
-                          value={newStaff.fullName}
-                          onChange={(e) => setNewStaff(s => ({ ...s, fullName: e.target.value }))}
-                          style={styles.input}
-                        />
-                      </div>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Email</label>
-                        <input
-                          placeholder="Email"
-                          type="email"
-                          value={newStaff.email}
-                          onChange={(e) => setNewStaff(s => ({ ...s, email: e.target.value }))}
-                          style={styles.input}
-                        />
-                      </div>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Password</label>
-                        <input
-                          placeholder="Password"
-                          type="password"
-                          value={newStaff.password}
-                          onChange={(e) => setNewStaff(s => ({ ...s, password: e.target.value }))}
-                          style={styles.input}
-                        />
-                      </div>
-                      <div style={styles.modalActions}>
-                        <button style={styles.cancelBtn} onClick={() => setShowAddModal(false)}>
-                          Cancel
-                        </button>
-                        <button style={styles.primaryBtn} onClick={addStaff} disabled={saving}>
-                          {saving ? "Creating..." : "Create Staff"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* showDeleteModal removed as customers cannot be deleted by admins */}
-              </div>
-            )}
 
             {activeTab === "business" && (
               <div style={styles.contentCard}>
@@ -699,6 +551,25 @@ const AdminSettings = () => {
                       onChange={(e) => setBusinessSettings(s => ({ ...s, gcashNumber: e.target.value }))}
                       style={styles.input}
                       placeholder="09XXXXXXXXX"
+                    />
+                  </div>
+                </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>GCash QR Code</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+                    {businessSettings.gcashQR && (
+                      <img 
+                        src={`${API.defaults.baseURL.replace("/api", "")}${businessSettings.gcashQR}`} 
+                        alt="GCash QR" 
+                        style={{ width: "80px", height: "80px", borderRadius: "8px", objectFit: "cover", border: "1px solid var(--border-color)" }}
+                      />
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setSelectedQR(e.target.files[0])}
+                      style={{ ...styles.input, flex: 1 }}
                     />
                   </div>
                 </div>

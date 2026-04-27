@@ -27,7 +27,10 @@ router.get("/", authenticate, async (req, res) => {
 
     res.json({
       success: true,
-      notifications
+      notifications: notifications.map((notification) => ({
+        ...notification,
+        bookingId: notification.targetId || notification.relatedId || null
+      }))
     });
 
   } catch (error) {

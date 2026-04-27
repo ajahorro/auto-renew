@@ -39,7 +39,7 @@ const Notifications = () => {
   const handleNotificationClick = (n) => {
     if (!n.isRead) markRead(n.id);
     
-    const bookingId = n.targetId || n.relatedId;
+    const bookingId = n.bookingId || n.targetId || n.relatedId;
     if (bookingId) {
       navigate(`/customer/bookings/${bookingId}`);
     }

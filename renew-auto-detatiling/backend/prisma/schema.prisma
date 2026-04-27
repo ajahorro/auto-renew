@@ -38,6 +38,19 @@ enum RefundStatus {
   FORFEITED
 }
 
+enum OtpChannel {
+  EMAIL
+  SMS
+}
+
+enum OtpPurpose {
+  REGISTRATION
+  LOGIN
+  PASSWORD_RESET
+  EMAIL_CHANGE
+  PHONE_CHANGE
+}
+
 enum PaymentMethod {
   GCASH
   CASH
@@ -50,6 +63,7 @@ enum PaymentStatus {
   PARTIALLY_PAID
   PAID
   REJECTED
+  FAILED
   APPROVED    // legacy
   VERIFIED    // legacy
   COMPLETED   // legacy
@@ -81,6 +95,25 @@ enum AddonRequestStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum OcrMatchStatus {
+  UNREVIEWED
+  MATCH
+  MISMATCH
+}
+
+enum NotificationChannel {
+  WEB
+  EMAIL
+  SMS
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  RETRYING
 }
 
 // ============================================
@@ -116,6 +149,9 @@ model User {
   cancellationRequests CancellationRequest[]
   communicationLogs CommunicationLog[]
   auditLogs        AuditLog[]
+  refundsRequested Refund[]       @relation("RefundRequestedBy")
+  refundsProcessed Refund[]       @relation("RefundProcessedBy")
+  notificationsSent NotificationDispatch[] @relation("NotificationDispatchRecipient")
 
   // OTP for registration
   otpVerification OtpVerification?
@@ -133,10 +169,16 @@ model OtpVerification {
   id        String    @id @default(cuid())
   userId    String    @unique
   otpHash   String
+  channel   OtpChannel @default(EMAIL)
+  purpose   OtpPurpose @default(REGISTRATION)
   expiresAt DateTime
   attempts  Int       @default(0)
+  resendCount Int     @default(0)
+  lockedUntil DateTime?
+  lastSentAt DateTime?
   verifiedAt DateTime?
   createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -155,8 +197,13 @@ model PendingRegistration {
   fullName  String
   phone     String?
   otp       String
+  otpAttempts Int    @default(0)
+  resendCount Int    @default(0)
+  lockedUntil DateTime?
+  channel OtpChannel @default(EMAIL)
   expiresAt DateTime
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
   @@index([expiresAt])
@@ -171,8 +218,12 @@ model EmailVerification {
   email     String
   otp       String
   type      String    @default("EMAIL_CHANGE")
+  attempts  Int       @default(0)
+  resendCount Int     @default(0)
+  lockedUntil DateTime?
   expiresAt DateTime
   createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([email])
   @@index([expiresAt])
@@ -249,6 +300,13 @@ model Booking {
   isLocked Boolean @default(false)
   sameDayReminderSent Boolean @default(false)
   oneHourReminderSent Boolean @default(false)
+  startReminderSent Boolean @default(false)
+  paymentDeadlineAt DateTime?
+  archivedAt DateTime?
+  archiveReason String?
+  adminOverrideReason String?
+  adminOverrideBy String?
+  adminOverrideAt DateTime?
 
   customer       User         @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
   assignedStaff User?        @relation("StaffAssignedBookings", fields: [assignedStaffId], references: [id], onDelete: SetNull)
@@ -258,12 +316,15 @@ model Booking {
   cancellationRequests CancellationRequest[]
   communicationLogs   CommunicationLog[]
   addonRequests        AddonRequest[]
+  refunds             Refund[]
 
   @@index([customerId])
   @@index([status])
   @@index([appointmentStart])
   @@index([assignedStaffId])
   @@index([cancellationStatus])
+  @@index([paymentDeadlineAt])
+  @@index([archivedAt])
 }
 
 // ============================================
@@ -309,12 +370,19 @@ model Payment {
 
   // For GCash payments
   proofImage    String?
+  proofOriginalName String?
+  proofMimeType String?
+  proofSizeBytes Int?
   referenceNumber String?
+  expectedAmount Decimal? @db.Decimal(10, 2)
 
   // Verification
   verifiedBy      String?
   verifiedAt      DateTime?
   rejectionReason String?
+  failureReason   String?
+
+  ocrResult PaymentOcrResult?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -324,6 +392,32 @@ model Payment {
   @@index([bookingId])
   @@index([status])
   @@index([method])
+  @@index([createdBy])
+}
+
+model PaymentOcrResult {
+  id        Int  @id @default(autoincrement())
+  paymentId Int  @unique
+
+  extractedAmount Decimal? @db.Decimal(10, 2)
+  extractedReferenceNumber String?
+  extractedDate DateTime?
+  rawText String?
+  providerName String?
+  providerReference String?
+  confidence Decimal? @db.Decimal(5, 2)
+  matchStatus OcrMatchStatus @default(UNREVIEWED)
+  mismatchReason String?
+  reviewedBy String?
+  reviewedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([matchStatus])
+  @@index([createdAt])
 }
 
 // ============================================
@@ -419,10 +513,39 @@ model Notification {
   createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dispatches NotificationDispatch[]
 
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+}
+
+model NotificationDispatch {
+  id             String @id @default(cuid())
+  notificationId Int?
+  recipientUserId String?
+  channel        NotificationChannel
+  type           String
+  status         NotificationDeliveryStatus @default(PENDING)
+  destination    String?
+  subject        String?
+  payload        Json?
+  attemptCount   Int @default(0)
+  maxAttempts    Int @default(3)
+  lastAttemptAt  DateTime?
+  nextRetryAt    DateTime?
+  deliveredAt    DateTime?
+  failureReason  String?
+  providerMessageId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  notification Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  recipientUser User? @relation("NotificationDispatchRecipient", fields: [recipientUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, nextRetryAt])
+  @@index([channel, status])
+  @@index([recipientUserId])
 }
 
 // ============================================
@@ -451,13 +574,6 @@ model BusinessSettings {
 
   // Cancellation Policy
   cancellationWindowHours Int @default(24)
-
-  // SMTP Configuration
-  smtpHost     String?
-  smtpPort     Int?
-  smtpUser     String?
-  smtpPassword String?
-  smtpFrom     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -493,4 +609,27 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([userId])
   @@index([createdAt])
+}
+
+model Refund {
+  id          Int @id @default(autoincrement())
+  bookingId   Int
+  requestedBy String?
+  processedBy String?
+
+  amount      Decimal @db.Decimal(10, 2)
+  status      RefundStatus @default(PENDING)
+  reason      String?
+  notes       String?
+  processedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  requester User?   @relation("RefundRequestedBy", fields: [requestedBy], references: [id], onDelete: SetNull)
+  processor User?   @relation("RefundProcessedBy", fields: [processedBy], references: [id], onDelete: SetNull)
+
+  @@index([bookingId])
+  @@index([status])
+  @@index([processedAt])
 }

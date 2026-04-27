@@ -7,7 +7,8 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
   const [answers, setAnswers] = useState({
     size: "",
     goal: "",
-    issues: []
+    condition: "",
+    issue: ""
   });
 
   const QUESTIONS = [
@@ -27,6 +28,25 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
         { label: "Deep Clean (Interior + Exterior)", value: "full" },
         { label: "Exterior Shine & Protection", value: "shine" },
         { label: "Interior Refresh", value: "interior" }
+      ]
+    },
+    {
+      title: "Vehicle Condition?",
+      field: "condition",
+      options: [
+        { label: "Well Maintained (New/Regularly Cleaned)", value: "good" },
+        { label: "Needs Attention (Daily Driver)", value: "average" },
+        { label: "Heavily Soiled / Neglected", value: "poor" }
+      ]
+    },
+    {
+      title: "Any specific issues?",
+      field: "issue",
+      options: [
+        { label: "Scratches / Swirl Marks", value: "scratches" },
+        { label: "Foul Odor / Pet Hair", value: "odor" },
+        { label: "Hard Water Spots", value: "water_spots" },
+        { label: "None, just maintenance", value: "none" }
       ]
     }
   ];
@@ -86,6 +106,26 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
       }
     }
 
+    // Specialized Add-ons based on issues
+    if (answers.issue === "scratches") {
+      const correction = findByKeyword(["correction", "buff", "polish"], "SPECIALIZED");
+      if (correction) recommendations.push({ ...correction, reason: "Removes swirl marks and light scratches." });
+    } else if (answers.issue === "odor") {
+      const odor = findByKeyword(["odor", "steam", "antibac", "disinfect"], "SPECIALIZED") || findByKeyword(["odor", "steam"], "INTERIOR");
+      if (odor) recommendations.push({ ...odor, reason: "Eliminates bacteria and tough odors at the source." });
+    } else if (answers.issue === "water_spots") {
+      const spots = findByKeyword(["water spot", "glass", "acid"], "SPECIALIZED");
+      if (spots) recommendations.push({ ...spots, reason: "Safely removes etched mineral deposits from paint/glass." });
+    }
+
+    // Heavy Soiling Bonus
+    if (answers.condition === "poor") {
+      const heavy = findByKeyword(["heavy", "deep", "restoration"]);
+      if (heavy && !recommendations.some(r => r.id === heavy.id)) {
+        recommendations.push({ ...heavy, reason: "Powerful cleaning agents for heavily soiled surfaces." });
+      }
+    }
+
     // Final fallback if nothing found
     if (recommendations.length === 0) {
       recommendations = allServices.slice(0, 2).map(s => ({ 
@@ -119,7 +159,7 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
 
   const reset = () => {
     setStep(0);
-    setAnswers({ size: "", goal: "", issues: [] });
+    setAnswers({ size: "", goal: "", condition: "", issue: "" });
     setIsOpen(false);
   };
 

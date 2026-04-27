@@ -1,8 +1,8 @@
-
 const prisma = require("../config/prisma");
 const LOG_REQUEST = require("../utils/logRequest");
 const { createNotification } = require("../services/notification.service");
 const { createAuditLog } = require("../services/audit.service");
+const { getBusinessSettings } = require("../services/domain.service");
 
 const STATUS = {
   SCHEDULED: "SCHEDULED",
@@ -291,6 +291,8 @@ const createBooking = async (req, res) => {
     const settings = await prisma.businessSettings.findFirst();
     const defaults = { openingHour: 9, closingHour: 18, maxBookingsPerSlot: 3 };
     const maxBookingsPerSlot = settings?.maxBookingsPerSlot ?? defaults.maxBookingsPerSlot;
+    const domainSettings = await getBusinessSettings();
+    const paymentDeadlineAt = new Date(Date.now() + domainSettings.paymentGracePeriodHours * 60 * 60 * 1000);
 
     const items = dbServices.map(service => ({
       serviceId: service.id,
@@ -325,6 +327,7 @@ const newBooking = await tx.booking.create({
           serviceStatus: SERVICE_STATUS.NOT_STARTED,
           appointmentStart,
           appointmentEnd,
+          paymentDeadlineAt,
           totalAmount: parsedTotalAmount,
           amountPaid: 0,
           paymentMethod: normalizedPaymentMethod,
@@ -354,36 +357,40 @@ const newBooking = await tx.booking.create({
       return newBooking;
     });
 
-    const admins = await prisma.user.findMany({
-      where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
-    });
-    for (const admin of admins) {
-      await createNotification(admin.id, {
-        title: "New Booking Created",
-        message: `New booking created. Total: ₱${parsedTotalAmount.toLocaleString()}`,
-        type: "BOOKING",
-        actionType: "BOOKING_CREATED",
-        targetId: String(booking.id),
-        targetName: `Booking #${booking.id}`
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true }
       });
-    }
+      for (const admin of admins) {
+        await createNotification(admin.id, {
+          title: "New Booking Created",
+          message: `New booking created. Total: ₱${parsedTotalAmount.toLocaleString()}`,
+          type: "BOOKING",
+          actionType: "BOOKING_CREATED",
+          targetId: String(booking.id),
+          targetName: `Booking #${booking.id}`
+        });
+      }
 
-    // Audit log for booking creation
-    await createAuditLog({
-      userId: finalCustomerId,
-      action: "CREATE",
-      entityType: "Booking",
-      entityId: String(booking.id),
-      newValue: {
-        status: booking.status,
-        totalAmount: parsedTotalAmount,
-        paymentMethod: normalizedPaymentMethod,
-        appointmentStart: appointmentStart.toISOString()
-      },
-      details: `New booking #${booking.id} created by customer for ${appointmentStart.toLocaleDateString()}. Total: ₱${parsedTotalAmount.toLocaleString()}`,
-      bookingId: booking.id,
-      performedBy: finalCustomerId
-    });
+      // Audit log for booking creation
+      await createAuditLog({
+        userId: finalCustomerId,
+        action: "CREATE",
+        entityType: "Booking",
+        entityId: String(booking.id),
+        newValue: {
+          status: booking.status,
+          totalAmount: parsedTotalAmount,
+          paymentMethod: normalizedPaymentMethod,
+          appointmentStart: appointmentStart.toISOString()
+        },
+        details: `New booking #${booking.id} created by customer for ${appointmentStart.toLocaleDateString()}. Total: ₱${parsedTotalAmount.toLocaleString()}`,
+        bookingId: booking.id,
+        performedBy: finalCustomerId
+      });
+    } catch (sideEffectError) {
+      console.error("WARNING [CREATE_BOOKING_SIDE_EFFECTS]:", sideEffectError);
+    }
 
     res.status(201).json({
       success: true,
@@ -774,18 +781,6 @@ const updateBookingStatus = async (req, res) => {
       });
     }
 
-    // Payment check for completion
-    if (status === STATUS.COMPLETED) {
-      const currentPaid = Number(booking.amountPaid) || 0;
-      const total = Number(booking.totalAmount);
-      
-      if (currentPaid < total) {
-        return res.status(400).json({
-          success: false,
-          message: "Cannot complete booking until the balance is fully paid."
-        });
-      }
-    }
 
     // Enforce transition logic
     if (!isValidTransition(booking.status, status)) {
@@ -2150,6 +2145,25 @@ const updateBooking = async (req, res) => {
       });
     }
 
+    if (booking.assignedStaffId) {
+      const staffConflict = await prisma.booking.findFirst({
+        where: {
+          assignedStaffId: booking.assignedStaffId,
+          id: { not: id },
+          status: { in: [STATUS.SCHEDULED, STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
+          appointmentStart: { lt: end },
+          appointmentEnd: { gt: start }
+        }
+      });
+
+      if (staffConflict) {
+        return res.status(400).json({
+          success: false,
+          message: "The assigned staff is busy during this new time slot"
+        });
+      }
+    }
+
     let totalAmount = 0;
     const newItemsData = dbServices.map(service => {
       const price = Number(service.price);
@@ -2604,7 +2618,7 @@ const requestCustomerCancel = async (req, res) => {
     }
 
     // Check valid status
-    if (!["PENDING", "CONFIRMED"].includes(booking.status)) {
+    if (!["PENDING", "CONFIRMED", "SCHEDULED"].includes(booking.status)) {
       return res.status(400).json({ success: false, message: "Cannot request cancellation for this booking" });
     }
 
@@ -2843,12 +2857,15 @@ const getAdminBookings = async (req, res) => {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    let { status, serviceStatus, paymentStatus, search, page = 1, limit = 20 } = req.query;
+    let { status, serviceStatus, paymentStatus, search, unassigned, page = 1, limit = 20 } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
     const skip = (page - 1) * limit;
 
     let where = {};
+    if (unassigned === "true") {
+      where.assignedStaffId = null;
+    }
     if (status) {
       const s = status.toUpperCase();
       if (s === "SCHEDULED") {
@@ -2975,13 +2992,45 @@ const updateServiceStatus = async (req, res) => {
       });
     }
 
+    // Enforce business rules for starting service
+    if (serviceStatus === SERVICE_STATUS.ONGOING) {
+      // 1. No start without valid payment status (at least FOR_VERIFICATION or PAID)
+      if (booking.paymentStatus === PAYMENT_STATUS.PENDING) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot start service while payment is PENDING. A downpayment or full payment proof is required."
+        });
+      }
+
+      // 2. No start before scheduled time (Staff only restriction)
+      if (actorRole === "STAFF" && booking.appointmentStart) {
+        const now = new Date();
+        const startTime = new Date(booking.appointmentStart);
+        // Allow a small buffer (e.g., 5 mins) if needed, but here strict as requested
+        if (now < startTime) {
+          return res.status(400).json({
+            success: false,
+            message: `Too early! You can only start this service at or after ${startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+          });
+        }
+      }
+    }
+
     const actionLabel = serviceStatus === SERVICE_STATUS.ONGOING ? "SERVICE_STARTED" : "SERVICE_COMPLETED";
     const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
 
     const result = await prisma.$transaction(async (tx) => {
+      // Sync Booking Status with Service Status
+      const updateData = { serviceStatus };
+      if (serviceStatus === SERVICE_STATUS.ONGOING) {
+        updateData.status = STATUS.ONGOING;
+      } else if (serviceStatus === SERVICE_STATUS.COMPLETED) {
+        updateData.status = STATUS.COMPLETED;
+      }
+
       const updated = await tx.booking.update({
         where: { id },
-        data: { serviceStatus }
+        data: updateData
       });
 
       await tx.auditLog.create({
@@ -2990,11 +3039,11 @@ const updateServiceStatus = async (req, res) => {
           action: actionLabel,
           entityType: "Booking",
           entityId: String(id),
-          oldValue: JSON.stringify({ serviceStatus: booking.serviceStatus }),
-          newValue: JSON.stringify({ serviceStatus }),
+          oldValue: JSON.stringify({ serviceStatus: booking.serviceStatus, status: booking.status }),
+          newValue: JSON.stringify({ serviceStatus, status: updateData.status || booking.status }),
           details: serviceStatus === SERVICE_STATUS.ONGOING
-            ? `Service started for Booking #${id} by ${actor?.fullName || "Staff"}`
-            : `Service completed for Booking #${id} by ${actor?.fullName || "Staff"}`,
+            ? `Service started for Booking #${id} by ${actor?.fullName || "Staff"}. Booking status moved to ONGOING.`
+            : `Service completed for Booking #${id} by ${actor?.fullName || "Staff"}. Booking status moved to COMPLETED.`,
           bookingId: id,
           performedBy: req.user.id
         }

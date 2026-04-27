@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import API from "../../api/axios"; // Unified API utility
-import AdminSidebar from "../../components/AdminSidebar";
+import AdminSideBar from "../../components/AdminSideBar";
 import { confirmAction } from "../../components/ConfirmModal";
 
 const AdminServices = () => {
@@ -97,7 +97,7 @@ const AdminServices = () => {
 
   return (
     <div style={styles.page}>
-      <AdminSidebar active="services" />
+      <AdminSideBar active="services" />
 
       <div style={styles.main}>
         <header style={styles.header}>

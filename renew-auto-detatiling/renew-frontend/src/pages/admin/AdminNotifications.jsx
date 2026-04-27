@@ -1,7 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../api/axios";
-import AdminSidebar from "../../components/AdminSidebar";
+import AdminSideBar from "../../components/AdminSideBar";
+import { 
+  Calendar, 
+  CreditCard, 
+  User, 
+  AlertTriangle, 
+  Bell,
+  X
+} from "lucide-react";
 
 const AdminNotifications = () => {
   const navigate = useNavigate();
@@ -60,33 +68,44 @@ const AdminNotifications = () => {
   const handleNotificationClick = (n) => {
     if (!n.isRead) markRead(n.id);
     
-    // Deep linking: If there's a targetId (like bookingId), go directly to it
-    const bookingId = n.targetId || n.relatedId;
-    
-    if (bookingId && (
-      n.type === "BOOKING" || 
-      n.type === "CANCELLATION" || 
-      n.type === "PAYMENT" || 
-      n.title?.toLowerCase().includes("booking") || 
-      n.title?.toLowerCase().includes("cancellation")
-    )) {
-      navigate(`/admin/bookings/${bookingId}`);
-    } else if (n.type === "BOOKING" || n.type === "PAYMENT" || n.title?.toLowerCase().includes("booking") || n.title?.toLowerCase().includes("payment")) {
-      navigate("/admin/bookings");
-    } else if (n.title?.toLowerCase().includes("schedule")) {
-      navigate("/admin/schedule");
+    const bookingId = n.bookingId || n.targetId || n.relatedId;
+    if (bookingId) {
+      const titleLower = (n.title || "").toLowerCase();
+      const typeLower = (n.type || "").toLowerCase();
+      
+      if (
+        typeLower === "booking" || 
+        typeLower === "cancellation" || 
+        typeLower === "payment" || 
+        typeLower === "addon" ||
+        titleLower.includes("booking") || 
+        titleLower.includes("cancellation") ||
+        titleLower.includes("addon") ||
+        titleLower.includes("payment")
+      ) {
+        navigate(`/admin/bookings/${bookingId}`);
+      } else {
+        navigate("/admin");
+      }
     } else {
-      navigate("/admin");
+      const titleLower = (n.title || "").toLowerCase();
+      if (titleLower.includes("schedule")) {
+        navigate("/admin/schedule");
+      } else if (titleLower.includes("payment")) {
+        navigate("/admin/payments");
+      } else {
+        navigate("/admin");
+      }
     }
   };
 
   const getTypeIcon = (type) => {
     switch (type) {
-      case "BOOKING": return "📅";
-      case "PAYMENT": return "💰";
-      case "STAFF": return "👤";
-      case "CANCELLATION": return "⚠️";
-      default: return "🔔";
+      case "BOOKING": return <Calendar size={18} />;
+      case "PAYMENT": return <CreditCard size={18} />;
+      case "STAFF": return <User size={18} />;
+      case "CANCELLATION": return <AlertTriangle size={18} />;
+      default: return <Bell size={18} />;
     }
   };
 
@@ -104,7 +123,7 @@ const AdminNotifications = () => {
 
   return (
     <div style={styles.page}>
-      <AdminSidebar active="notifications" />
+      <AdminSideBar active="notifications" />
 
       <div style={styles.main}>
         <div style={styles.header}>
@@ -162,7 +181,7 @@ const AdminNotifications = () => {
                   style={styles.deleteBtn}
                   onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
                 >
-                  ×
+                  <X size={18} />
                 </button>
               </div>
             ))

@@ -47,6 +47,10 @@ const PaymentModal = ({ booking, onClose, onSuccess, isPostService = false }) =>
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (method === "CASH") {
+      toast.error("Cash payments must be recorded by staff at the shop");
+      return;
+    }
     
     if (method === "GCASH" || isPostService) {
       if (!file) {
@@ -92,6 +96,9 @@ const PaymentModal = ({ booking, onClose, onSuccess, isPostService = false }) =>
   const amountDue = getAmountDue();
   const gcashNumber = businessSettings?.gcashNumber || "0917-123-4567";
   const gcashName = businessSettings?.gcashName || "RENEW Auto Detailing";
+  const gcashQrUrl = businessSettings?.gcashQR
+    ? `${API.defaults.baseURL.replace("/api", "")}${businessSettings.gcashQR}`
+    : null;
 
   return (
     <div style={overlayStyle} onClick={onClose}>
@@ -136,19 +143,15 @@ const PaymentModal = ({ booking, onClose, onSuccess, isPostService = false }) =>
             >
               GCash
             </button>
-            <button
-              type="button"
-              style={{ ...tabStyle, ...(method === "CASH" ? activeTabStyle : {}) }}
-              onClick={() => setMethod("CASH")}
-            >
-              Pay on Arrival
-            </button>
           </div>
 
           {method === "GCASH" && (
             <div style={gcashSection}>
               <div style={gcashInfo}>
                 <p style={gcashText}>Send payment to:</p>
+                {gcashQrUrl && (
+                  <img src={gcashQrUrl} alt="GCash QR" style={qrImageStyle} />
+                )}
                 <p style={gcashNumberStyle}>{gcashNumber}</p>
                 <p style={gcashNameStyle}>{gcashName}</p>
                 <p style={amountStyle}>Amount: <strong>₱{amountDue.toLocaleString()}</strong></p>
@@ -212,7 +215,7 @@ const PaymentModal = ({ booking, onClose, onSuccess, isPostService = false }) =>
               Cancel
             </button>
             <button type="submit" disabled={loading} style={submitBtnStyle}>
-              {loading ? "Processing..." : method === "GCASH" ? "Submit Payment" : "Confirm Pay on Arrival"}
+              {loading ? "Processing..." : "Submit Payment"}
             </button>
           </div>
         </form>
@@ -344,6 +347,16 @@ const gcashInfo = {
   background: "rgba(59, 130, 246, 0.1)",
   borderRadius: "12px",
   textAlign: "center"
+};
+const qrImageStyle = {
+  width: "140px",
+  height: "140px",
+  objectFit: "contain",
+  borderRadius: "12px",
+  margin: "0 auto 12px",
+  display: "block",
+  background: "#fff",
+  padding: "8px"
 };
 
 const gcashText = {

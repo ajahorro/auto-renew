@@ -87,8 +87,8 @@ const BookAppointment = () => {
       if (maxSvcs && Number.isFinite(Number(maxSvcs))) {
         setMaxServices(Number(maxSvcs));
       }
-      if (data?.gcashNumber || data?.gcashName) {
-        setGcashInfo({ number: data.gcashNumber, name: data.gcashName });
+      if (data?.gcashNumber || data?.gcashName || data?.gcashQR) {
+        setGcashInfo({ number: data.gcashNumber, name: data.gcashName, qr: data.gcashQR });
       }
     } catch {
       // use default
@@ -402,7 +402,10 @@ const BookAppointment = () => {
                   {isSelected && <span style={{color: "var(--accent-blue)"}}>✓</span>}
                 </div>
                 <p style={styles.serviceDesc}>{service.description}</p>
-                <div style={styles.priceTag}>₱{Number(service.price).toLocaleString()}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto" }}>
+                  <div style={styles.priceTag}>₱{Number(service.price).toLocaleString()}</div>
+                  <div style={{ fontSize: "11px", color: "var(--text-secondary)", opacity: 0.8 }}>{service.durationMin} mins</div>
+                </div>
               </div>
             );
           })}
@@ -709,7 +712,14 @@ const BookAppointment = () => {
               <div style={styles.gcashHeader}>
                 <span style={styles.gcashLabel}>GCash Payment</span>
               </div>
-              <div style={styles.gcashDetails}>
+                <div style={styles.gcashDetails}>
+                {gcashInfo?.qr && (
+                  <img
+                    src={`${API.defaults.baseURL.replace("/api", "")}${gcashInfo.qr}`}
+                    alt="GCash QR"
+                    style={styles.gcashQr}
+                  />
+                )}
                 <div style={styles.gcashRow}>
                   <span>GCash Number:</span>
                   <span style={styles.gcashValue}>{gcashInfo?.number || "N/A"}</span>
@@ -910,6 +920,16 @@ const styles = {
   gcashHeader: { marginBottom: "15px" },
   gcashLabel: { fontSize: "16px", fontWeight: "700", color: "var(--accent-green)" },
   gcashDetails: { marginBottom: "20px" },
+  gcashQr: {
+    width: "160px",
+    height: "160px",
+    objectFit: "contain",
+    margin: "0 auto 16px",
+    display: "block",
+    background: "#fff",
+    borderRadius: "12px",
+    padding: "8px"
+  },
   gcashRow: { display: "flex", justifyContent: "space-between", marginBottom: "10px", fontSize: "14px" },
   gcashValue: { fontWeight: "600", color: "var(--text-primary)" },
   gcashAmount: { fontWeight: "700", fontSize: "18px", color: "var(--accent-green)" },

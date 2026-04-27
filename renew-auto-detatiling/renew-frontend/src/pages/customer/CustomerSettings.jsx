@@ -22,13 +22,14 @@ const CustomerSettings = () => {
   const { theme, setThemeMode } = useTheme();
   const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
 
-  const [activeTab, setActiveTab] = useState("profile");
+  const [activeTab, setActiveTab] = useState("account");
 
   const [profile, setProfile] = useState({
     fullName: storedUser.fullName || "",
     email: storedUser.email || "",
     phone: storedUser.phone || "",
-    notifyEmail: storedUser.notifyEmail ?? false
+    notifyEmail: storedUser.notifyEmail ?? false,
+    notifyWeb: storedUser.notifyWeb ?? true
   });
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -65,7 +66,8 @@ const CustomerSettings = () => {
           fullName: res.data.user.fullName || "",
           email: res.data.user.email || "",
           phone: res.data.user.phone || "",
-          notifyEmail: res.data.user.notifyEmail ?? false
+          notifyEmail: res.data.user.notifyEmail ?? false,
+          notifyWeb: res.data.user.notifyWeb ?? true
         });
         localStorage.setItem("user", JSON.stringify(res.data.user));
       }
@@ -134,7 +136,7 @@ const CustomerSettings = () => {
     }
     setSaving(true);
     try {
-      await API.patch("/users/me", {
+      await API.patch("/users/me/password", {
         currentPassword,
         newPassword
       });
@@ -158,18 +160,11 @@ const CustomerSettings = () => {
           {/* TABS */}
           <div style={styles.tabs}>
             <button 
-              style={{...styles.tab, ...(activeTab === "profile" ? styles.tabActive : {})}}
-              onClick={() => setActiveTab("profile")}
+              style={{...styles.tab, ...(activeTab === "account" ? styles.tabActive : {})}}
+              onClick={() => setActiveTab("account")}
             >
               <User size={18} />
-              Profile
-            </button>
-            <button 
-              style={{...styles.tab, ...(activeTab === "security" ? styles.tabActive : {})}}
-              onClick={() => setActiveTab("security")}
-            >
-              <Lock size={18} />
-              Security
+              Account Settings
             </button>
             <button 
               style={{...styles.tab, ...(activeTab === "theme" ? styles.tabActive : {})}}
@@ -188,134 +183,173 @@ const CustomerSettings = () => {
           </div>
 
           <div style={styles.content}>
-            {/* PROFILE TAB */}
-            {activeTab === "profile" && (
-              <div style={styles.card}>
-                <h3 style={styles.cardTitle}>Public Profile</h3>
-                <div style={styles.grid}>
-                  <div style={styles.field}>
-                    <label style={styles.label}>Full Name</label>
-                    <div style={styles.inputBox}>
-                      <User size={16} style={styles.inputIcon} />
-                      <input 
-                        style={styles.input}
-                        value={profile.fullName}
-                        onChange={(e) => setProfile({...profile, fullName: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                  <div style={styles.field}>
-                    <label style={styles.label}>Phone Number</label>
-                    <div style={styles.inputBox}>
-                      <Phone size={16} style={styles.inputIcon} />
-                      <input 
-                        style={styles.input}
-                        value={profile.phone}
-                        onChange={(e) => setProfile({...profile, phone: e.target.value})}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div style={{marginTop: "24px"}}>
-                  <label style={styles.label}>Email Address</label>
-                  <div style={styles.inputBox}>
-                    <Mail size={16} style={styles.inputIcon} />
-                    <input 
-                      style={styles.input}
-                      value={profile.email}
-                      onChange={(e) => {
-                        setProfile({...profile, email: e.target.value});
-                        setEmailChanged(true);
-                      }}
-                    />
-                    {profile.email === storedUser.email && (
-                      <CheckCircle2 size={16} color="var(--accent-green)" style={{marginLeft: "10px"}} />
-                    )}
-                  </div>
-                  {emailChanged && !otpSent && (
-                    <button style={styles.verifyBtn} onClick={sendEmailOtp}>
-                      Verify New Email
-                    </button>
-                  )}
-                  {otpSent && (
-                    <div style={styles.otpBox}>
-                      <p style={styles.otpText}>A code was sent to <strong>{pendingEmail}</strong></p>
-                      <div style={styles.otpInputGroup}>
+            {/* ACCOUNT SETTINGS TAB */}
+            {activeTab === "account" && (
+              <div style={{display: "flex", flexDirection: "column", gap: "24px"}}>
+                <div style={styles.card}>
+                  <h3 style={styles.cardTitle}>Personal Information</h3>
+                  <div style={styles.grid}>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Full Name</label>
+                      <div style={styles.inputBox}>
+                        <User size={16} style={styles.inputIcon} />
                         <input 
-                          placeholder="6-digit code"
-                          value={otp}
-                          onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0,6))}
-                          style={styles.otpInput}
+                          style={styles.input}
+                          value={profile.fullName}
+                          onChange={(e) => setProfile({...profile, fullName: e.target.value})}
                         />
-                        <button style={styles.otpVerifyBtn} onClick={verifyEmailOtp}>Verify</button>
-                        <button style={styles.otpCancelBtn} onClick={() => setOtpSent(false)}><X size={16} /></button>
                       </div>
                     </div>
-                  )}
-                </div>
+                    <div style={styles.field}>
+                      <label style={styles.label}>Phone Number</label>
+                      <div style={styles.inputBox}>
+                        <Phone size={16} style={styles.inputIcon} />
+                        <input 
+                          style={styles.input}
+                          value={profile.phone}
+                          onChange={(e) => setProfile({...profile, phone: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                <hr style={styles.hr} />
-
-                <div style={styles.notifications}>
-                  <h3 style={styles.cardTitle}>Email Notifications</h3>
-                  <div style={styles.toggleRow}>
-                    <span>Receive booking updates & reminders</span>
-                    <label style={styles.switch}>
+                  <div style={{marginTop: "24px"}}>
+                    <label style={styles.label}>Email Address</label>
+                    <div style={styles.inputBox}>
+                      <Mail size={16} style={styles.inputIcon} />
                       <input 
-                        type="checkbox" 
-                        checked={profile.notifyEmail}
-                        onChange={(e) => saveNotificationPrefs("notifyEmail", e.target.checked)}
+                        style={styles.input}
+                        value={profile.email}
+                        onChange={(e) => {
+                          setProfile({...profile, email: e.target.value});
+                          setEmailChanged(true);
+                        }}
                       />
-                      <span style={styles.slider}></span>
-                    </label>
+                      {profile.email === storedUser.email && (
+                        <CheckCircle2 size={16} color="var(--accent-green)" style={{marginLeft: "10px"}} />
+                      )}
+                    </div>
+                    {emailChanged && !otpSent && (
+                      <button style={styles.verifyBtn} onClick={sendEmailOtp}>
+                        Verify New Email
+                      </button>
+                    )}
+                    {otpSent && (
+                      <div style={styles.otpBox}>
+                        <p style={styles.otpText}>A code was sent to <strong>{pendingEmail}</strong></p>
+                        <div style={styles.otpInputGroup}>
+                          <input 
+                            placeholder="6-digit code"
+                            value={otp}
+                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0,6))}
+                            style={styles.otpInput}
+                          />
+                          <button style={styles.otpVerifyBtn} onClick={verifyEmailOtp}>Verify</button>
+                          <button style={styles.otpCancelBtn} onClick={() => setOtpSent(false)}><X size={16} /></button>
+                        </div>
+                      </div>
+                    )}
                   </div>
+
+                  <button style={styles.saveBtn} onClick={updateProfile} disabled={saving}>
+                    <Save size={18} />
+                    {saving ? "Saving..." : "Save Profile"}
+                  </button>
                 </div>
 
-                <button style={styles.saveBtn} onClick={updateProfile} disabled={saving}>
-                  <Save size={18} />
-                  {saving ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            )}
+                <div style={styles.card}>
+                  <h3 style={styles.cardTitle}>Security & Notifications</h3>
+                  <div style={{display: "flex", flexDirection: "column", gap: "24px"}}>
+                    <div>
+                      <h4 style={{fontSize: "14px", fontWeight: "600", marginBottom: "16px"}}>Change Password</h4>
+                      <div style={styles.grid}>
+                        <div style={styles.field}>
+                          <label style={styles.label}>Current Password</label>
+                          <div style={styles.inputBox}>
+                            <Lock size={16} style={styles.inputIcon} />
+                            <input 
+                              type={showCurrentPass ? "text" : "password"}
+                              style={styles.input}
+                              value={currentPassword}
+                              onChange={(e) => setCurrentPassword(e.target.value)}
+                            />
+                            <div onClick={() => setShowCurrentPass(!showCurrentPass)} style={styles.eyeBtn}>
+                              {showCurrentPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={styles.field}>
+                          <label style={styles.label}>New Password</label>
+                          <div style={styles.inputBox}>
+                            <Lock size={16} style={styles.inputIcon} />
+                            <input 
+                              type={showNewPass ? "text" : "password"}
+                              style={styles.input}
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                            />
+                            <div onClick={() => setShowNewPass(!showNewPass)} style={styles.eyeBtn}>
+                              {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <button style={{...styles.saveBtn, marginTop: "12px"}} onClick={changePassword} disabled={saving}>
+                        Update Password
+                      </button>
+                    </div>
 
-            {/* SECURITY TAB */}
-            {activeTab === "security" && (
-              <div style={styles.card}>
-                <h3 style={styles.cardTitle}>Change Password</h3>
-                <div style={styles.field}>
-                  <label style={styles.label}>Current Password</label>
-                  <div style={styles.inputBox}>
-                    <Lock size={16} style={styles.inputIcon} />
-                    <input 
-                      type={showCurrentPass ? "text" : "password"}
-                      style={styles.input}
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                    />
-                    <div onClick={() => setShowCurrentPass(!showCurrentPass)} style={styles.eyeBtn}>
-                      {showCurrentPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    <hr style={styles.hr} />
+
+                    <div>
+                      <h4 style={{fontSize: "14px", fontWeight: "600", marginBottom: "16px"}}>Preferences</h4>
+                      <div style={styles.toggleRow}>
+                        <div>
+                          <p style={{fontWeight: "600", fontSize: "14px"}}>Email Notifications</p>
+                          <p style={{fontSize: "12px", color: "var(--text-secondary)"}}>Receive booking updates & reminders</p>
+                        </div>
+                        <label style={styles.switch}>
+                          <input 
+                            type="checkbox" 
+                            checked={profile.notifyEmail}
+                            onChange={(e) => saveNotificationPrefs("notifyEmail", e.target.checked)}
+                          />
+                          <span style={{
+                            ...styles.slider,
+                            background: profile.notifyEmail ? "var(--accent-blue)" : "#ccc"
+                          }}>
+                            <span style={{
+                              ...styles.sliderKnob,
+                              left: profile.notifyEmail ? "24px" : "4px"
+                            }} />
+                          </span>
+                        </label>
+                      </div>
+                      <div style={{...styles.toggleRow, marginTop: "16px"}}>
+                        <div>
+                          <p style={{fontWeight: "600", fontSize: "14px"}}>In-App Notifications</p>
+                          <p style={{fontSize: "12px", color: "var(--text-secondary)"}}>Show notifications inside the dashboard</p>
+                        </div>
+                        <label style={styles.switch}>
+                          <input 
+                            type="checkbox" 
+                            checked={profile.notifyWeb}
+                            onChange={(e) => saveNotificationPrefs("notifyWeb", e.target.checked)}
+                          />
+                          <span style={{
+                            ...styles.slider,
+                            background: profile.notifyWeb ? "var(--accent-blue)" : "#ccc"
+                          }}>
+                            <span style={{
+                              ...styles.sliderKnob,
+                              left: profile.notifyWeb ? "24px" : "4px"
+                            }} />
+                          </span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 </div>
-                <div style={styles.field}>
-                  <label style={styles.label}>New Password</label>
-                  <div style={styles.inputBox}>
-                    <Lock size={16} style={styles.inputIcon} />
-                    <input 
-                      type={showNewPass ? "text" : "password"}
-                      style={styles.input}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                    />
-                    <div onClick={() => setShowNewPass(!showNewPass)} style={styles.eyeBtn}>
-                      {showNewPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </div>
-                  </div>
-                </div>
-                <button style={styles.saveBtn} onClick={changePassword} disabled={saving}>
-                  Update Password
-                </button>
               </div>
             )}
 
@@ -419,7 +453,14 @@ const styles = {
   helperText: { fontSize: "14px", color: "var(--text-secondary)", marginBottom: "20px" },
   toggleRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
   switch: { position: "relative", display: "inline-block", width: "46px", height: "24px" },
-  slider: { position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "#ccc", transition: ".4s", borderRadius: "24px" }
+  slider: { 
+    position: "absolute", cursor: "pointer", top: 0, left: 0, right: 0, bottom: 0, 
+    transition: ".4s", borderRadius: "24px", display: "flex", alignItems: "center"
+  },
+  sliderKnob: {
+    position: "absolute", height: "16px", width: "16px", borderRadius: "50%",
+    background: "white", transition: ".4s"
+  }
 };
 
 export default CustomerSettings;

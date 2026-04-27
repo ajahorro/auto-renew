@@ -3,6 +3,9 @@ import API from "../../api/axios";
 import StaffSidebar from "../../components/StaffSidebar";
 import toast from "react-hot-toast";
 import { confirmAction } from "../../components/ConfirmModal";
+import BookingStatusBadge from "../../components/BookingStatusBadge";
+import PaymentStatusBadge from "../../components/PaymentStatusBadge";
+import ServiceStatusBadge from "../../components/ServiceStatusBadge";
 
 const StaffTasks = () => {
 
@@ -20,13 +23,7 @@ const StaffTasks = () => {
       const res = await API.get("/bookings");
       const data = res.data;
       const allBookings = Array.isArray(data) ? data : (data.bookings || []);
-      const filtered = allBookings.filter(b =>
-        b.status === "CONFIRMED" ||
-        b.status === "ONGOING" ||
-        b.status === "COMPLETED" ||
-        b.status === "CANCELLED"
-      );
-      setBookings(filtered);
+      setBookings(allBookings);
     } catch (err) {
       console.log("Staff bookings error", err);
     } finally {
@@ -35,6 +32,17 @@ const StaffTasks = () => {
   };
 
   const updateStatus = async (bookingId, status) => {
+    const actionLabel = status === "ONGOING" ? "start" : "finish";
+    const confirmed = await confirmAction({
+      title: status === "ONGOING" ? "Start Service" : "Finish Service",
+      message: `Are you sure you want to ${actionLabel} this service?`,
+      confirmText: `Yes, ${status === "ONGOING" ? "Start" : "Finish"}`,
+      cancelText: "Cancel",
+      type: "primary"
+    });
+
+    if (!confirmed) return;
+
     try {
       setUpdatingId(bookingId);
       // Staff should use the service-status endpoint
@@ -94,9 +102,17 @@ const StaffTasks = () => {
     });
   };
 
+  const canStart = (booking) => {
+    if (!["PARTIALLY_PAID", "PAID", "APPROVED"].includes(booking.paymentStatus)) return false;
+    if (!booking.appointmentStart) return false;
+    return new Date() >= new Date(booking.appointmentStart);
+  };
+
+  const canComplete = (booking) => ["PAID", "APPROVED"].includes(booking.paymentStatus);
+
   const filteredBookings = bookings.filter(b => {
-    if (filter === "active") return b.status !== "COMPLETED" && b.status !== "CANCELLED";
-    if (filter === "completed") return b.status === "COMPLETED" || b.status === "CANCELLED";
+    if (filter === "active") return b.serviceStatus !== "COMPLETED" && b.status !== "CANCELLED";
+    if (filter === "completed") return b.serviceStatus === "COMPLETED" || b.status === "CANCELLED";
     return true;
   });
 
@@ -297,15 +313,17 @@ const StaffTasks = () => {
             {filteredBookings.map(b => {
               const services = b.items?.map(i => i.service?.name || i.serviceNameAtBooking).join(", ") || "No services";
               const total = b.items?.reduce((sum,i)=>sum + Number(i.priceAtBooking || 0), 0) || 0;
-              const statusLabel = b.status?.toLowerCase() || "";
-              const isReadOnly = b.status === "COMPLETED" || b.status === "CANCELLED";
+              const statusLabel = b.serviceStatus?.toLowerCase() || "";
+              const isReadOnly = b.serviceStatus === "COMPLETED" || b.status === "CANCELLED";
                
               return(
                 <div key={b.id} style={{...styles.card, opacity: isReadOnly ? 0.8 : 1}}>
                   <div style={styles.cardHeader}>
-                    <span style={{...styles.statusBadge, background: getStatusColor(b.status)}}>
-                      {statusLabel}
-                    </span>
+                    <div style={{display:"flex", gap:"8px", flexWrap:"wrap"}}>
+                      <BookingStatusBadge status={b.status} />
+                      <ServiceStatusBadge status={b.serviceStatus} />
+                      <PaymentStatusBadge status={b.paymentStatus} />
+                    </div>
                     <span style={styles.bookingId}>#{b.id}</span>
                   </div>
 
@@ -340,27 +358,29 @@ const StaffTasks = () => {
                     </p>
                   ) : (
                     <div style={styles.actionRow}>
-                      {b.status === "CONFIRMED" && (
+                      {b.serviceStatus === "NOT_STARTED" && (
                         <button
                           style={styles.startBtn}
-                          disabled={updatingId === b.id}
+                          disabled={updatingId === b.id || !canStart(b)}
                           onClick={() => updateStatus(b.id, "ONGOING")}
+                          title={canStart(b) ? "" : "Payment required or scheduled time not reached"}
                         >
-                          {updatingId === b.id ? "Updating..." : "Start Service"}
+                          {updatingId === b.id ? "Updating..." : canStart(b) ? "Start Service" : "Cannot Start Yet"}
                         </button>
                       )}
 
-                      {b.status === "ONGOING" && (
+                      {b.serviceStatus === "ONGOING" && (
                         <button
                           style={styles.completeBtn}
-                          disabled={updatingId === b.id}
+                          disabled={updatingId === b.id || !canComplete(b)}
                           onClick={() => updateStatus(b.id, "COMPLETED")}
+                          title={canComplete(b) ? "" : "Full payment or admin override required"}
                         >
-                          {updatingId === b.id ? "Updating..." : "Mark Completed"}
+                          {updatingId === b.id ? "Updating..." : canComplete(b) ? "Mark Completed" : "Payment Incomplete"}
                         </button>
                       )}
 
-                      {b.status === "CONFIRMED" && (
+                      {["SCHEDULED", "CONFIRMED"].includes(b.status) && (
                         <button
                           style={styles.cancelBtn}
                           disabled={updatingId === b.id}

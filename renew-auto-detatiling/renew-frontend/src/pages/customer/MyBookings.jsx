@@ -55,7 +55,7 @@ const MyBookings = () => {
     if (!confirmed) return;
 
     try {
-      const res = await API.patch(`/bookings/request-cancel/${id}`, {
+      const res = await API.post(`/bookings/${id}/cancel-request`, {
         reason: "Requested by customer from bookings page"
       });
       toast.success(res.data.message || "Cancellation request submitted!");

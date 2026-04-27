@@ -173,14 +173,39 @@ router.get("/me", authenticate, async (req, res) => {
 router.patch("/me", authenticate, async (req, res) => {
   try {
     const { fullName, phone, email, notifyEmail, notifyWeb } = req.body;
-    const updateData = { fullName, phone };
-    if (email) updateData.email = email;
+    const updateData = {};
+    if (fullName !== undefined) {
+      if (typeof fullName !== "string" || fullName.trim().length < 2) {
+        return res.status(400).json({ success: false, message: "Full name must be at least 2 characters" });
+      }
+      updateData.fullName = fullName.trim();
+    }
+    if (phone !== undefined) {
+      updateData.phone = phone ? String(phone).trim() : null;
+    }
+    if (email !== undefined) {
+      return res.status(400).json({ success: false, message: "Email must be changed through OTP verification" });
+    }
     if (notifyEmail !== undefined) updateData.notifyEmail = notifyEmail;
     if (notifyWeb !== undefined) updateData.notifyWeb = notifyWeb;
 
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, message: "No valid fields provided" });
+    }
+
     const updated = await prisma.user.update({
       where: { id: req.user.id },
-      data: updateData
+      data: updateData,
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        role: true,
+        notifyEmail: true,
+        notifyWeb: true,
+        createdAt: true
+      }
     });
     res.json({ success: true, user: updated });
   } catch (error) {
@@ -192,6 +217,12 @@ router.patch("/me", authenticate, async (req, res) => {
 router.patch("/me/password", authenticate, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: "Current and new password are required" });
+    }
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ success: false, message: "New password must be at least 6 characters" });
+    }
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
     const match = await bcrypt.compare(currentPassword, user.password);
     if (!match) return res.status(400).json({ success: false, message: "Current password is incorrect" });
