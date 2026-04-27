@@ -72,8 +72,10 @@ const CustomerDashboard = () => {
           return;
         }
 
-        const filtered = bookings.filter(b => b.status !== "CANCELLED");
-        const activeBooking = filtered.find(b => b.status !== "COMPLETED") || filtered[0];
+        const activeBooking = bookings.find(b => 
+          b.status !== "COMPLETED" && 
+          b.status !== "CANCELLED"
+        );
 
         if (activeBooking) {
           const services = activeBooking.items?.map(item => ({

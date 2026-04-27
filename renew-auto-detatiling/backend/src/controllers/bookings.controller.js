@@ -5,27 +5,24 @@ const { createNotification } = require("../services/notification.service");
 const { createAuditLog } = require("../services/audit.service");
 
 const STATUS = {
-  SCHEDULED: "SCHEDULED",
-  COMPLETED: "COMPLETED",
-  CANCELLED: "CANCELLED",
-  // Legacy aliases kept for backward-compat reads only
   PENDING: "PENDING",
   CONFIRMED: "CONFIRMED",
-  ONGOING: "ONGOING"
+  ONGOING: "ONGOING",
+  COMPLETED: "COMPLETED",
+  CANCELLED: "CANCELLED"
 };
 
 const SERVICE_STATUS = {
   NOT_STARTED: "NOT_STARTED",
-  ONGOING: "ONGOING",
-  COMPLETED: "COMPLETED"
+  IN_PROGRESS: "IN_PROGRESS",
+  FINISHED: "FINISHED"
 };
 
 const PAYMENT_STATUS = {
-  PENDING: "PENDING",
+  UNPAID: "UNPAID",
   FOR_VERIFICATION: "FOR_VERIFICATION",
-  PARTIALLY_PAID: "PARTIALLY_PAID",
   PAID: "PAID",
-  REJECTED: "REJECTED"
+  REFUNDED: "REFUNDED"
 };
 
 const parseBookingId = (req) => {
@@ -40,19 +37,17 @@ const isPrivilegedRole = (role) => {
 };
 
 const VALID_BOOKING_TRANSITIONS = {
-  SCHEDULED: ["CANCELLED"],
+  PENDING: ["CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["ONGOING", "CANCELLED"],
+  ONGOING: ["COMPLETED", "CANCELLED"],
   COMPLETED: [],
-  CANCELLED: [],
-  // Legacy
-  PENDING: ["CANCELLED"],
-  CONFIRMED: ["CANCELLED"],
-  ONGOING: ["COMPLETED"]
+  CANCELLED: []
 };
 
 const VALID_SERVICE_TRANSITIONS = {
-  NOT_STARTED: ["ONGOING"],
-  ONGOING: ["COMPLETED"],
-  COMPLETED: []
+  NOT_STARTED: ["IN_PROGRESS"],
+  IN_PROGRESS: ["FINISHED"],
+  FINISHED: []
 };
 
 const isValidTransition = (current, next) => {
@@ -318,10 +313,10 @@ const createBooking = async (req, res) => {
 const newBooking = await tx.booking.create({
         data: {
           customerId: finalCustomerId,
-          status: STATUS.SCHEDULED,
+          status: STATUS.PENDING,
           cancellationStatus: "NONE",
           refundStatus: "NONE",
-          paymentStatus: PAYMENT_STATUS.PENDING,
+          paymentStatus: PAYMENT_STATUS.UNPAID,
           serviceStatus: SERVICE_STATUS.NOT_STARTED,
           appointmentStart,
           appointmentEnd,
@@ -344,8 +339,8 @@ const newBooking = await tx.booking.create({
       await tx.notification.create({
         data: {
           userId: finalCustomerId,
-          title: "Booking Scheduled",
-          message: `Your booking for ${appointmentStart.toLocaleDateString()} has been scheduled. We will assign a staff member shortly.`,
+          title: "Booking Received",
+          message: `Your booking for ${appointmentStart.toLocaleDateString()} has been received. Please wait for confirmation.`,
           type: "BOOKING",
           actionType: "BOOKING_CREATED"
         }
@@ -526,10 +521,10 @@ const assignStaff = async (req, res) => {
       return res.status(400).json({ success: false, message: "Booking is locked" });
     }
 
-    // Allow assignment for SCHEDULED bookings (or legacy PENDING/CONFIRMED/ONGOING)
-    const assignableStatuses = [STATUS.SCHEDULED, STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING];
+    // Allow assignment for PENDING, CONFIRMED, or ONGOING bookings
+    const assignableStatuses = [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING];
     if (!assignableStatuses.includes(booking.status)) {
-      return res.status(400).json({ success: false, message: "Staff can only be assigned to scheduled or active bookings" });
+      return res.status(400).json({ success: false, message: "Staff can only be assigned to active bookings" });
     }
 
     // Only check time constraint for future bookings
@@ -552,7 +547,7 @@ const assignStaff = async (req, res) => {
         where: {
           assignedStaffId: String(assignedStaffId),
           id: { not: id },
-          status: { in: [STATUS.SCHEDULED, STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
+          status: { in: [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
           appointmentStart: { lt: booking.appointmentEnd },
           appointmentEnd: { gt: booking.appointmentStart }
         }
@@ -571,7 +566,7 @@ const assignStaff = async (req, res) => {
             where: {
               assignedStaffId: staff.id,
               id: { not: id },
-              status: { in: [STATUS.SCHEDULED, STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
+              status: { in: [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] },
               appointmentStart: { lt: booking.appointmentEnd },
               appointmentEnd: { gt: booking.appointmentStart }
             }
@@ -581,7 +576,7 @@ const assignStaff = async (req, res) => {
             const workload = await prisma.booking.count({
               where: {
                 assignedStaffId: staff.id,
-                status: { in: [STATUS.SCHEDULED, STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] }
+                status: { in: [STATUS.PENDING, STATUS.CONFIRMED, STATUS.ONGOING] }
               }
             });
             return { staff, workload };
@@ -2959,20 +2954,49 @@ const getAdminBookings = async (req, res) => {
       return res.status(401).json({ success: false, message: "Authentication required" });
     }
 
-    let { status, serviceStatus, paymentStatus, page = 1, limit = 20 } = req.query;
+    let { status, serviceStatus, paymentStatus, searchTerm, page = 1, limit = 20 } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
     const skip = (page - 1) * limit;
 
     let where = {};
-    if (status) {
-      where.status = status.toUpperCase();
-    }
-    if (serviceStatus) {
-      where.serviceStatus = serviceStatus.toUpperCase();
-    }
-    if (paymentStatus) {
-      where.paymentStatus = paymentStatus.toUpperCase();
+    
+    // Exact enum matching
+    if (status) where.status = status.toUpperCase();
+    if (serviceStatus) where.serviceStatus = serviceStatus.toUpperCase();
+    if (paymentStatus) where.paymentStatus = paymentStatus.toUpperCase();
+
+    // Global Search
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const statusMatches = Object.keys(STATUS).filter(s => s.toLowerCase().includes(searchLower));
+      const serviceMatches = Object.keys(SERVICE_STATUS).filter(s => s.toLowerCase().includes(searchLower));
+      const paymentMatches = Object.keys(PAYMENT_STATUS).filter(s => s.toLowerCase().includes(searchLower));
+
+      where.AND = [
+        ...(where.status ? [{ status: where.status }] : []),
+        ...(where.serviceStatus ? [{ serviceStatus: where.serviceStatus }] : []),
+        ...(where.paymentStatus ? [{ paymentStatus: where.paymentStatus }] : []),
+        {
+          OR: [
+            { id: !isNaN(parseInt(searchTerm)) ? parseInt(searchTerm) : undefined },
+            { customer: { fullName: { contains: searchLower, mode: 'insensitive' } } },
+            { customer: { email: { contains: searchLower, mode: 'insensitive' } } },
+            { vehicleType: { contains: searchLower, mode: 'insensitive' } },
+            { plateNumber: { contains: searchLower, mode: 'insensitive' } },
+            { vehicleBrand: { contains: searchLower, mode: 'insensitive' } },
+            { vehicleModel: { contains: searchLower, mode: 'insensitive' } },
+            { status: { in: statusMatches } },
+            { serviceStatus: { in: serviceMatches } },
+            { paymentStatus: { in: paymentMatches } }
+          ].filter(condition => condition.id !== undefined || condition.customer || condition.vehicleType || condition.plateNumber || condition.vehicleBrand || condition.vehicleModel || (condition.status && condition.status.in.length > 0) || (condition.serviceStatus && condition.serviceStatus.in.length > 0) || (condition.paymentStatus && condition.paymentStatus.in.length > 0))
+        }
+      ];
+      
+      // Clean up top-level where to avoid redundancy with AND
+      delete where.status;
+      delete where.serviceStatus;
+      delete where.paymentStatus;
     }
 
     const [totalCount, bookings] = await Promise.all([
@@ -3067,6 +3091,43 @@ const updateServiceStatus = async (req, res) => {
       return res.status(403).json({ success: false, message: "You can only update service status for bookings assigned to you" });
     }
 
+    // NEW VALIDATIONS
+    if (serviceStatus === SERVICE_STATUS.IN_PROGRESS) {
+      // 1. Prevent service start if: current time < scheduled start time
+      if (new Date() < new Date(booking.appointmentStart)) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Cannot start service before the scheduled appointment time" 
+        });
+      }
+      // 2. Cannot start service unless: Booking is CONFIRMED
+      if (booking.status !== STATUS.CONFIRMED) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Cannot start service. Booking must be in CONFIRMED status." 
+        });
+      }
+    }
+
+    if (serviceStatus === SERVICE_STATUS.FINISHED) {
+      // 3. Cannot finish service unless: ServiceStatus = IN_PROGRESS
+      if (booking.serviceStatus !== SERVICE_STATUS.IN_PROGRESS) {
+         return res.status(400).json({ 
+          success: false, 
+          message: "Cannot finish service. It must be IN_PROGRESS first." 
+        });
+      }
+      // 4. Payment is PAID OR admin override exists
+      const isPaid = booking.paymentStatus === PAYMENT_STATUS.PAID;
+      const isAdmin = isPrivilegedRole(actorRole);
+      if (!isPaid && !isAdmin) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Cannot finish service. Payment must be PAID or approved by an administrator." 
+        });
+      }
+    }
+
     // Validate service status transition
     if (!VALID_SERVICE_TRANSITIONS[booking.serviceStatus]?.includes(serviceStatus)) {
       return res.status(400).json({
@@ -3075,13 +3136,18 @@ const updateServiceStatus = async (req, res) => {
       });
     }
 
-    const actionLabel = serviceStatus === SERVICE_STATUS.ONGOING ? "SERVICE_STARTED" : "SERVICE_COMPLETED";
+    const actionLabel = serviceStatus === SERVICE_STATUS.IN_PROGRESS ? "SERVICE_STARTED" : "SERVICE_COMPLETED";
     const actor = await prisma.user.findUnique({ where: { id: req.user.id } });
 
     const result = await prisma.$transaction(async (tx) => {
+      const updateData = { serviceStatus };
+      if (serviceStatus === SERVICE_STATUS.IN_PROGRESS) {
+        updateData.status = STATUS.ONGOING;
+      }
+
       const updated = await tx.booking.update({
         where: { id },
-        data: { serviceStatus }
+        data: updateData
       });
 
       await tx.auditLog.create({
@@ -3092,9 +3158,9 @@ const updateServiceStatus = async (req, res) => {
           entityId: String(id),
           oldValue: JSON.stringify({ serviceStatus: booking.serviceStatus }),
           newValue: JSON.stringify({ serviceStatus }),
-          details: serviceStatus === SERVICE_STATUS.ONGOING
+          details: serviceStatus === SERVICE_STATUS.IN_PROGRESS
             ? `Service started for Booking #${id} by ${actor?.fullName || "Staff"}`
-            : `Service completed for Booking #${id} by ${actor?.fullName || "Staff"}`,
+            : `Service finished for Booking #${id} by ${actor?.fullName || "Staff"}`,
           bookingId: id,
           performedBy: req.user.id
         }
@@ -3104,10 +3170,10 @@ const updateServiceStatus = async (req, res) => {
       await tx.notification.create({
         data: {
           userId: booking.customerId,
-          title: serviceStatus === SERVICE_STATUS.ONGOING ? "Service Started" : "Service Completed",
-          message: serviceStatus === SERVICE_STATUS.ONGOING
-            ? `Your vehicle service has started. We will notify you when it's complete.`
-            : `Your vehicle service has been completed. Thank you for choosing RENEW!`,
+          title: serviceStatus === SERVICE_STATUS.IN_PROGRESS ? "Service Started" : "Service Finished",
+          message: serviceStatus === SERVICE_STATUS.IN_PROGRESS
+            ? `Your vehicle service has started. We will notify you when it's finished.`
+            : `Your vehicle service has been finished. Thank you for choosing RENEW!`,
           type: "BOOKING",
           actionType: actionLabel,
           actorId: req.user.id,

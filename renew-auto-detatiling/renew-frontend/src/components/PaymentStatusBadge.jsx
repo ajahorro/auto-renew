@@ -2,9 +2,9 @@ import { CheckCircle2, Clock, XCircle, AlertCircle, Eye, DollarSign, RefreshCw }
 
 const PaymentStatusBadge = ({ status }) => {
   const configs = {
-    PENDING: {
+    UNPAID: {
       icon: <Clock size={12} />,
-      label: "Pending",
+      label: "Unpaid",
       color: "#f59e0b",
       textColor: "#000"
     },
@@ -14,22 +14,10 @@ const PaymentStatusBadge = ({ status }) => {
       color: "#8b5cf6",
       textColor: "#fff"
     },
-    PARTIALLY_PAID: {
-      icon: <DollarSign size={12} />,
-      label: "Downpayment Paid",
-      color: "#0ea5e9",
-      textColor: "#fff"
-    },
     PAID: {
       icon: <CheckCircle2 size={12} />,
-      label: "Completed",
+      label: "Paid",
       color: "#22c55e",
-      textColor: "#fff"
-    },
-    REJECTED: {
-      icon: <XCircle size={12} />,
-      label: "Rejected",
-      color: "#ef4444",
       textColor: "#fff"
     },
     REFUNDED: {
@@ -38,9 +26,22 @@ const PaymentStatusBadge = ({ status }) => {
       color: "#64748b",
       textColor: "#fff"
     },
-    CANCELLED: {
+    // Legacy
+    PENDING: {
+      icon: <Clock size={12} />,
+      label: "Unpaid",
+      color: "#f59e0b",
+      textColor: "#000"
+    },
+    PARTIALLY_PAID: {
+      icon: <DollarSign size={12} />,
+      label: "Partially Paid",
+      color: "#0ea5e9",
+      textColor: "#fff"
+    },
+    REJECTED: {
       icon: <XCircle size={12} />,
-      label: "Cancelled",
+      label: "Rejected",
       color: "#ef4444",
       textColor: "#fff"
     }

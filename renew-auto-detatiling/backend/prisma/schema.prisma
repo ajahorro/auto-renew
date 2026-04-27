@@ -18,9 +18,9 @@ enum BookingStatus {
   PENDING
   CONFIRMED
   ONGOING
-  CANCELLED
   COMPLETED
-  SCHEDULED   // legacy
+  CANCELLED
+  SCHEDULED       // legacy
   PENDING_PAYMENT // legacy
 }
 
@@ -45,20 +45,24 @@ enum PaymentMethod {
 }
 
 enum PaymentStatus {
-  PENDING
+  UNPAID
   FOR_VERIFICATION
-  PARTIALLY_PAID
   PAID
-  REJECTED
-  APPROVED    // legacy
-  VERIFIED    // legacy
-  COMPLETED   // legacy
+  REFUNDED
+  PENDING         // legacy
+  PARTIALLY_PAID  // legacy
+  REJECTED        // legacy
+  APPROVED        // legacy
+  VERIFIED        // legacy
+  COMPLETED       // legacy
 }
 
 enum ServiceStatus {
   NOT_STARTED
-  ONGOING
-  COMPLETED
+  IN_PROGRESS
+  FINISHED
+  ONGOING   // legacy
+  COMPLETED // legacy
 }
 
 enum PaymentType {
@@ -208,10 +212,10 @@ model Booking {
   id         Int  @id @default(autoincrement())
   customerId String
 
-  status BookingStatus @default(SCHEDULED)
+  status BookingStatus @default(PENDING)
   cancellationStatus CancellationStatus @default(NONE)
   refundStatus RefundStatus @default(NONE)
-  paymentStatus PaymentStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(UNPAID)
   serviceStatus ServiceStatus @default(NOT_STARTED)
   auditLogs    AuditLog[]
 

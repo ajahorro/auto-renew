@@ -5,7 +5,7 @@ const prisma = require("../config/prisma");
 
 const calculateRefundAmount = async (bookingId) => {
   const payments = await prisma.payment.findMany({
-    where: { bookingId, status: "APPROVED" }
+    where: { bookingId, status: "PAID" }
   });
   
   const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -45,7 +45,7 @@ const GET_PENDING_REFUNDS = async (req, res) => {
           take: 1
         },
         payments: {
-          where: { status: "APPROVED" }
+          where: { status: "PAID" }
         }
       },
       orderBy: { updatedAt: "desc" }
@@ -131,7 +131,8 @@ const PROCESS_REFUND = async (req, res) => {
       await tx.booking.update({
         where: { id: Number(bookingId) },
         data: {
-          refundStatus: "PROCESSED"
+          refundStatus: "PROCESSED",
+          paymentStatus: "REFUNDED"
         }
       });
 

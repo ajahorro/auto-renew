@@ -135,7 +135,7 @@ const createPayment = async (req, res) => {
 
     const isPostService = method === "GCASH_POST_SERVICE" || (booking.status === "COMPLETED" && requiresProof);
     // GCash payments always go to FOR_VERIFICATION (admin must approve)
-    const status = (method === "GCASH" || method === "GCASH_POST_SERVICE") ? "FOR_VERIFICATION" : "APPROVED";
+    const status = (method === "GCASH" || method === "GCASH_POST_SERVICE") ? "FOR_VERIFICATION" : "PAID";
     const type = paymentType || (Number(booking.totalAmount) >= 5000 && Number(booking.amountPaid) === 0 ? "DOWNPAYMENT" : "FULL");
     const amount = type === "DOWNPAYMENT" 
       ? Number(booking.totalAmount) * 0.5 
@@ -240,10 +240,8 @@ const updateBookingPaymentStatus = async (bookingId, newPaymentAmount) => {
     let newPaymentStatus;
     if (newAmountPaid >= totalAmount && totalAmount > 0) {
       newPaymentStatus = "PAID";
-    } else if (newAmountPaid > 0) {
-      newPaymentStatus = "PARTIALLY_PAID";
     } else {
-      newPaymentStatus = "PENDING";
+      newPaymentStatus = "UNPAID";
     }
 
     await prisma.booking.update({
@@ -317,14 +315,14 @@ const verifyPayment = async (req, res) => {
     let bookingPaymentStatusUpdate = {};
 
     if (resolvedAction === "approve") {
-      updatedPaymentStatus = "APPROVED";
+      updatedPaymentStatus = "PAID";
     } else if (resolvedAction === "reject") {
-      updatedPaymentStatus = "REJECTED";
-      bookingPaymentStatusUpdate = { paymentStatus: "REJECTED" };
+      updatedPaymentStatus = "UNPAID";
+      bookingPaymentStatusUpdate = { paymentStatus: "UNPAID" };
     } else {
       // resubmit — send back to customer
-      updatedPaymentStatus = "PENDING";
-      bookingPaymentStatusUpdate = { paymentStatus: "PENDING" };
+      updatedPaymentStatus = "UNPAID";
+      bookingPaymentStatusUpdate = { paymentStatus: "UNPAID" };
     }
 
     const updatedPayment = await prisma.payment.update({
@@ -422,7 +420,7 @@ const createManualPayment = async (req, res) => {
         bookingId: booking.id,
         amount: Number(amount),
         method: "CASH",
-        status: "APPROVED",
+        status: "PAID",
         verifiedBy: userId,
         verifiedAt: new Date()
       }

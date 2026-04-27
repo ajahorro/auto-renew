@@ -17,6 +17,7 @@ import AdminNotifications from "./pages/admin/AdminNotifications";
 import AdminPayments from "./pages/admin/AdminPayments";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
+import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
 
 /* ================= STAFF ================= */
 import StaffDashboard from "./pages/staff/StaffDashboard";
@@ -106,6 +107,15 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}>
               <AdminCustomers />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/staff"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}>
+              <AdminStaffManagement />
             </ProtectedRoute>
           }
         />

@@ -15,7 +15,9 @@ import {
   Play, 
   CheckCircle2, 
   ArrowRight,
-  Info
+  Info,
+  XCircle,
+  Banknote
 } from "lucide-react";
 
 const StaffDashboard = () => {
@@ -25,6 +27,7 @@ const StaffDashboard = () => {
   const [view, setView] = useState("tasks"); // "tasks" or "schedule"
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split("T")[0]);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [cashAmount, setCashAmount] = useState("");
 
   const loadAssignedBookings = useCallback(async () => {
     try {
@@ -53,6 +56,32 @@ const StaffDashboard = () => {
       await loadAssignedBookings();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to update service status");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+ 
+  const recordCashPayment = async () => {
+    if (!cashAmount || isNaN(cashAmount) || Number(cashAmount) <= 0) {
+      return toast.error("Please enter a valid amount");
+    }
+    try {
+      setUpdatingId(selectedBooking.id);
+      await API.post("/payments/manual", {
+        bookingId: selectedBooking.id,
+        amount: Number(cashAmount)
+      });
+      toast.success("Cash payment recorded!");
+      setCashAmount("");
+      
+      // Refresh
+      const res = await API.get("/bookings");
+      const all = Array.isArray(res.data) ? res.data : (res.data.bookings || []);
+      setBookings(all);
+      const updated = all.find(b => b.id === selectedBooking.id);
+      if (updated) setSelectedBooking(updated);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to record payment");
     } finally {
       setUpdatingId(null);
     }
@@ -353,6 +382,34 @@ const StaffDashboard = () => {
                   <div style={styles.notesBox}>{selectedBooking.notes}</div>
                 </div>
               )}
+ 
+              <hr style={{...styles.hr, margin: "32px 0"}} />
+ 
+              <div style={styles.paymentSection}>
+                <label style={{display: "flex", alignItems: "center", gap: "8px", color: "var(--accent-green)"}}>
+                  <Banknote size={16} />
+                  RECORD CASH PAYMENT
+                </label>
+                <p style={{fontSize: "12px", color: "var(--text-secondary)", marginBottom: "16px"}}>
+                  Input the amount received from the customer. This will update the payment status.
+                </p>
+                <div style={styles.cashInputGroup}>
+                  <input
+                    type="number"
+                    placeholder="Enter amount (₱)"
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                    style={styles.cashInput}
+                  />
+                  <button 
+                    onClick={recordCashPayment} 
+                    disabled={updatingId === selectedBooking.id || !cashAmount}
+                    style={styles.cashBtn}
+                  >
+                    {updatingId === selectedBooking.id ? "Recording..." : "Record Payment"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -517,6 +574,16 @@ const styles = {
     padding: "16px", background: "rgba(234, 179, 8, 0.05)", 
     borderRadius: "14px", border: "1px dashed var(--accent-yellow)",
     color: "var(--text-primary)", fontSize: "14px", lineHeight: "1.6"
+  },
+  paymentSection: { marginTop: "32px" },
+  cashInputGroup: { display: "flex", gap: "12px" },
+  cashInput: {
+    flex: 1, padding: "12px 16px", borderRadius: "10px", border: "1px solid var(--border-color)",
+    background: "var(--bg-primary)", color: "var(--text-primary)", outline: "none"
+  },
+  cashBtn: {
+    padding: "12px 24px", borderRadius: "10px", border: "none", background: "var(--accent-green)",
+    color: "white", fontWeight: "700", cursor: "pointer", opacity: 0.9
   }
 };
 

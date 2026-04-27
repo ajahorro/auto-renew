@@ -13,7 +13,9 @@ import {
   Bell, 
   Settings, 
   LogOut,
-  History
+  History,
+  Users,
+  User
 } from "lucide-react";
 
 const NavItem = ({ label, route, name, isActive, onNavigate, notifCount, icon: Icon }) => {
@@ -162,6 +164,8 @@ const AdminSidebar = ({ active }) => {
           <NavItem icon={Calendar} label="Schedule" route="/admin/schedule" name="schedule" isActive={active === "schedule"} onNavigate={navigate} notifCount={0} />
           <NavItem icon={ClipboardList} label="Booking Management" route="/admin/bookings" name="bookings" isActive={active === "bookings"} onNavigate={navigate} notifCount={0} />
           <NavItem icon={CheckSquare} label="Payment Verification" route="/admin/payments" name="payments" isActive={active === "payments"} onNavigate={navigate} notifCount={0} />
+          <NavItem icon={Users} label="Staff Management" route="/admin/staff" name="staff" isActive={active === "staff"} onNavigate={navigate} notifCount={0} />
+          <NavItem icon={User} label="Users" route="/admin/customers" name="customers" isActive={active === "customers"} onNavigate={navigate} notifCount={0} />
           <NavItem icon={BarChart3} label="Analytics" route="/admin/analytics" name="analytics" isActive={active === "analytics"} onNavigate={navigate} notifCount={0} />
           <NavItem icon={History} label="Audit Logs" route="/admin/audit" name="audit" isActive={active === "audit"} onNavigate={navigate} notifCount={0} />
           <NavItem icon={Bell} label="Notifications" route="/admin/notifications" name="notifications" isActive={active === "notifications"} onNavigate={navigate} notifCount={notifCount} />

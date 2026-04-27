@@ -31,6 +31,7 @@ const AdminBookings = () => {
       if (searchParams.get("status")) params.append("status", searchParams.get("status"));
       if (searchParams.get("serviceStatus")) params.append("serviceStatus", searchParams.get("serviceStatus"));
       if (searchParams.get("paymentStatus")) params.append("paymentStatus", searchParams.get("paymentStatus"));
+      if (searchTerm) params.append("searchTerm", searchTerm);
       
       const url = `/bookings/admin?${params.toString()}`;
       const res = await API.get(url);
@@ -40,17 +41,16 @@ const AdminBookings = () => {
     } finally {
       setLoading(false);
     }
-  }, [searchParams]);
+  }, [searchParams, searchTerm]);
 
   useEffect(() => {
-    loadBookings();
+    const timeoutId = setTimeout(() => {
+      loadBookings();
+    }, 500); // Debounce search
+    return () => clearTimeout(timeoutId);
   }, [loadBookings]);
 
-  const filteredBookings = bookings.filter(b => 
-    b.customer?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    b.id.toString().includes(searchTerm) ||
-    b.vehicleType?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredBookings = bookings;
 
   return (
     <div style={styles.page}>

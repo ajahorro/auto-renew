@@ -23,10 +23,10 @@ const styles = {
   },
 
   main: {
-    marginLeft: "260px", // ✅ matches sidebar
+    marginLeft: "280px", // ✅ matches sidebar
     padding: "40px",
     width: "100%",
-    maxWidth: "calc(100% - 260px)" // ✅ prevents overlap
+    maxWidth: "calc(100% - 280px)" // ✅ prevents overlap
   }
 };
 

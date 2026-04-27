@@ -28,6 +28,24 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
         { label: "Exterior Shine & Protection", value: "shine" },
         { label: "Interior Refresh", value: "interior" }
       ]
+    },
+    {
+      title: "What is the condition of your vehicle?",
+      field: "condition",
+      options: [
+        { label: "Relatively Clean (Dusty / Minor smudges)", value: "clean" },
+        { label: "Moderately Dirty (Visible mud / Floor debris)", value: "dirty" },
+        { label: "Heavily Soiled (Deep stains / Caked mud)", value: "heavy" }
+      ]
+    },
+    {
+      title: "When do you prefer to schedule?",
+      field: "schedule",
+      options: [
+        { label: "As soon as possible", value: "urgent" },
+        { label: "Weekday Morning (Mon-Fri)", value: "weekday_morning" },
+        { label: "Weekend (Sat-Sun)", value: "weekend" }
+      ]
     }
   ];
 
@@ -43,6 +61,7 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
 
     let recommendations = [];
     const lowerGoal = answers.goal.toLowerCase();
+    const lowerCondition = answers.condition.toLowerCase();
 
     // Helper to find service by keyword
     const findByKeyword = (keywords, category = null) => {
@@ -81,6 +100,13 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
       if (refresh && !recommendations.find(r => r.id === refresh.id)) recommendations.push(refresh);
     }
 
+    if (lowerCondition === "heavy") {
+      const deepClean = findByKeyword(["deep", "premium", "shampoo", "platinum"], "INTERIOR") || findByKeyword(["deep", "premium"], "EXTERIOR");
+      if (deepClean && !recommendations.find(r => r.id === deepClean.id)) {
+        recommendations.unshift(deepClean);
+      }
+    }
+
     // Fallback if nothing found
     if (recommendations.length === 0) {
       // Just pick top 3 most expensive or popular ones if we have categories
@@ -108,7 +134,7 @@ const SmartServiceAssistant = ({ onRecommend, services }) => {
 
   const reset = () => {
     setStep(0);
-    setAnswers({ size: "", goal: "", issues: [] });
+    setAnswers({ size: "", goal: "", issues: [], condition: "", schedule: "" });
     setIsOpen(false);
   };
 

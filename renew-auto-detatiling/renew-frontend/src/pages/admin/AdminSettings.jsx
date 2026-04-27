@@ -3,16 +3,17 @@ import AdminSidebar from "../../components/AdminSidebar";
 import API from "../../api/axios";
 import toast from "react-hot-toast";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 
 const AdminSettings = () => {
   const { theme, setThemeMode } = useTheme();
-  const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const { user, updateUser } = useAuth();
 
   const [activeTab, setActiveTab] = useState("profile");
 
   const [profile, setProfile] = useState({
-    fullName: storedUser.fullName || "",
-    email: storedUser.email || ""
+    fullName: user?.fullName || "",
+    email: user?.email || ""
   });
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -23,13 +24,6 @@ const AdminSettings = () => {
     slotDurationMinutes: 60,
     maxBookingsPerSlot: 2
   });
-
-  const [staffList, setStaffList] = useState([]);
-  const [customerList, setCustomerList] = useState([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newStaff, setNewStaff] = useState({ email: "", password: "", fullName: "", role: "STAFF" });
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deletingUser, setDeletingUser] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -53,7 +47,7 @@ const AdminSettings = () => {
           fullName: profileRes.data.user.fullName || "",
           email: profileRes.data.user.email || ""
         });
-        localStorage.setItem("user", JSON.stringify(profileRes.data.user));
+        updateUser(profileRes.data.user);
       }
 
       try {
@@ -64,11 +58,6 @@ const AdminSettings = () => {
       } catch {
         console.log("No business settings yet");
       }
-
-      const usersRes = await API.get("/admin/users");
-      const users = usersRes.data.users || [];
-      setStaffList(users.filter(u => u.role === "STAFF" || u.role === "ADMIN"));
-      setCustomerList(users.filter(u => u.role === "CUSTOMER"));
     } catch (err) {
       console.log("Load error:", err);
     } finally {
@@ -81,7 +70,7 @@ const AdminSettings = () => {
     try {
       const res = await API.patch("/users/me", profile);
       if (res.data.user) {
-        localStorage.setItem("user", JSON.stringify(res.data.user));
+        updateUser(res.data.user);
         toast.success("Profile updated");
       }
     } catch (err) {
@@ -170,35 +159,6 @@ const AdminSettings = () => {
     }
   };
 
-  const addStaff = async () => {
-    if (!newStaff.email || !newStaff.password || !newStaff.fullName) {
-      toast.error("All fields required");
-      return;
-    }
-    setSaving(true);
-    try {
-      await API.post("/users", newStaff);
-      toast.success("Staff account created");
-      setShowAddModal(false);
-      setNewStaff({ email: "", password: "", fullName: "", role: "STAFF" });
-      loadData();
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to create staff");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleUserStatus = async (userId, currentStatus) => {
-    const action = currentStatus ? "deactivate" : "activate";
-    try {
-      await API.patch(`/users/${userId}/${action}`);
-      toast.success(`User ${action}d`);
-      loadData();
-    } catch {
-      toast.error("Failed");
-    }
-  };
 
   // Customer deletion logic removed as per requirements.
 
@@ -211,7 +171,6 @@ const AdminSettings = () => {
   const tabs = [
     { id: "profile", label: "Profile" },
     { id: "theme", label: "Theme" },
-    { id: "staff", label: "Staff Management" },
     { id: "business", label: "Business Settings" },
     { id: "terms", label: "Terms & Conditions" }
   ];
@@ -411,168 +370,6 @@ const AdminSettings = () => {
               </div>
             )}
 
-            {activeTab === "staff" && (
-              <div>
-                <div style={styles.contentHeader}>
-                  <h2 style={styles.sectionHeader}>Staff Accounts</h2>
-                  <button style={styles.addBtn} onClick={() => setShowAddModal(true)}>
-                    + Add Staff
-                  </button>
-                </div>
-
-                <div style={styles.tableCard}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr style={styles.tableHeaderRow}>
-                        <th style={styles.tableHeader}>Name</th>
-                        <th style={styles.tableHeader}>Email</th>
-                        <th style={styles.tableHeader}>Role</th>
-                        <th style={styles.tableHeader}>Status</th>
-                        <th style={styles.tableHeader}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {staffList.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" style={styles.emptyCell}>
-                            No staff accounts yet. Click "Add Staff" to create one.
-                          </td>
-                        </tr>
-                      ) : (
-                        staffList.map(user => (
-                          <tr key={user.id} style={styles.tableRow}>
-                            <td style={styles.tableCell}>{user.fullName}</td>
-                            <td style={styles.tableCell}>{user.email}</td>
-                            <td style={styles.tableCell}>
-                              <span style={{
-                                ...styles.roleBadge,
-                                background: user.role === "ADMIN" ? "#8b5cf6" : "#f59e0b"
-                              }}>
-                                {user.role}
-                              </span>
-                            </td>
-                            <td style={styles.tableCell}>
-                              <span style={{
-                                ...styles.statusBadge,
-                                background: user.isActive ? "#22c55e" : "#ef4444"
-                              }}>
-                                {user.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-                            <td style={styles.tableCell}>
-                              <button 
-                                style={{
-                                  ...styles.actionBtn,
-                                  background: user.isActive ? "#ef4444" : "#22c55e"
-                                }}
-                                onClick={() => toggleUserStatus(user.id, user.isActive)}
-                              >
-                                {user.isActive ? "Deactivate" : "Activate"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={{...styles.contentHeader, marginTop: "40px"}}>
-                  <h2 style={styles.sectionHeader}>Customer Accounts</h2>
-                </div>
-
-                <div style={styles.tableCard}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr style={styles.tableHeaderRow}>
-                        <th style={styles.tableHeader}>Name</th>
-                        <th style={styles.tableHeader}>Email</th>
-                        <th style={styles.tableHeader}>Status</th>
-                        <th style={styles.tableHeader}>Created</th>
-                        <th style={styles.tableHeader}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {customerList.length === 0 ? (
-                        <tr>
-                          <td colSpan="5" style={styles.emptyCell}>
-                            No customer accounts found.
-                          </td>
-                        </tr>
-                      ) : (
-                        customerList.map(user => (
-                          <tr key={user.id} style={styles.tableRow}>
-                            <td style={styles.tableCell}>{user.fullName}</td>
-                            <td style={styles.tableCell}>{user.email}</td>
-                            <td style={styles.tableCell}>
-                              <span style={{
-                                ...styles.statusBadge,
-                                background: user.isActive ? "#22c55e" : "#ef4444"
-                              }}>
-                                {user.isActive ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-                            <td style={styles.tableCell}>
-                              {new Date(user.createdAt).toLocaleDateString()}
-                            </td>
-                            <td style={styles.tableCell}>
-                              <span style={styles.helperText}>Protected Account</span>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {showAddModal && (
-                  <div style={styles.modalOverlay} onClick={() => setShowAddModal(false)}>
-                    <div style={styles.modal} onClick={e => e.stopPropagation()}>
-                      <h3 style={styles.modalTitle}>Add New Staff</h3>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Full Name</label>
-                        <input
-                          placeholder="Full Name"
-                          value={newStaff.fullName}
-                          onChange={(e) => setNewStaff(s => ({ ...s, fullName: e.target.value }))}
-                          style={styles.input}
-                        />
-                      </div>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Email</label>
-                        <input
-                          placeholder="Email"
-                          type="email"
-                          value={newStaff.email}
-                          onChange={(e) => setNewStaff(s => ({ ...s, email: e.target.value }))}
-                          style={styles.input}
-                        />
-                      </div>
-                      <div style={styles.formGroup}>
-                        <label style={styles.label}>Password</label>
-                        <input
-                          placeholder="Password"
-                          type="password"
-                          value={newStaff.password}
-                          onChange={(e) => setNewStaff(s => ({ ...s, password: e.target.value }))}
-                          style={styles.input}
-                        />
-                      </div>
-                      <div style={styles.modalActions}>
-                        <button style={styles.cancelBtn} onClick={() => setShowAddModal(false)}>
-                          Cancel
-                        </button>
-                        <button style={styles.primaryBtn} onClick={addStaff} disabled={saving}>
-                          {saving ? "Creating..." : "Create Staff"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* showDeleteModal removed as customers cannot be deleted by admins */}
-              </div>
-            )}
 
             {activeTab === "business" && (
               <div style={styles.contentCard}>
@@ -826,7 +623,7 @@ const styles = {
     padding: "14px 28px",
     borderRadius: "10px",
     border: "none",
-    background: "#8b5cf6",
+    background: "var(--accent-blue)",
     color: "#fff",
     fontWeight: "600",
     cursor: "pointer",
@@ -846,7 +643,7 @@ const styles = {
     padding: "10px 20px",
     borderRadius: "8px",
     border: "none",
-    background: "#8b5cf6",
+    background: "var(--accent-blue)",
     color: "#fff",
     fontWeight: "600",
     cursor: "pointer",
@@ -1019,8 +816,8 @@ const themeStyles = {
     transition: "0.2s"
   },
   optionActive: {
-    borderColor: "#8b5cf6",
-    background: "rgba(139, 92, 246, 0.1)"
+    borderColor: "var(--accent-blue)",
+    background: "rgba(59, 130, 246, 0.1)"
   },
   optionIcon: {
     width: "56px",

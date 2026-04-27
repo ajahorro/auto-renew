@@ -47,6 +47,6 @@ router.patch("/:id/verify", authenticate, authorize("ADMIN", "SUPER_ADMIN"), ver
 
 router.post("/bulk-verify", authenticate, authorize("ADMIN", "SUPER_ADMIN"), bulkVerifyPayments);
 
-router.post("/manual", authenticate, authorize("ADMIN", "SUPER_ADMIN"), createManualPayment);
+router.post("/manual", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), createManualPayment);
 
 module.exports = router;

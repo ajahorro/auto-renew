@@ -8,15 +8,28 @@ const ServiceStatusBadge = ({ status }) => {
       color: "#64748b",
       textColor: "#fff"
     },
+    IN_PROGRESS: {
+      icon: <Play size={12} />,
+      label: "In Progress",
+      color: "#3b82f6",
+      textColor: "#fff"
+    },
+    FINISHED: {
+      icon: <CheckCircle2 size={12} />,
+      label: "Finished",
+      color: "#22c55e",
+      textColor: "#fff"
+    },
+    // Legacy
     ONGOING: {
       icon: <Play size={12} />,
-      label: "Ongoing",
+      label: "In Progress",
       color: "#3b82f6",
       textColor: "#fff"
     },
     COMPLETED: {
       icon: <CheckCircle2 size={12} />,
-      label: "Completed",
+      label: "Finished",
       color: "#22c55e",
       textColor: "#fff"
     },
