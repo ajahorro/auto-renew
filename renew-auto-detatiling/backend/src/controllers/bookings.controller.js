@@ -818,8 +818,6 @@ const updateBookingStatus = async (req, res) => {
       }
     };
 
-    const actor = await prisma.user.findUnique({ where: { id: req.user?.id } });
-
     const result = await prisma.$transaction(async (tx) => {
       // 1. Update Booking
       const updateData = { 
@@ -1626,13 +1624,9 @@ const getAdminAnalytics = async (req, res) => {
       };
     });
 
-      };
-    });
-
     // AI Revenue Forecast Logic
     const today = new Date();
     const currentDay = today.getDate();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     
     const projectedRevenue = currentDay > 0 
       ? (monthRevenue / currentDay) * daysInMonth 

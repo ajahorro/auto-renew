@@ -76,10 +76,12 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    return res.status(401).json({
+    // For JWT errors or any other auth errors, return 401
+    res.status(401).json({
       success: false,
       message: "Session expired or invalid.",
     });
+    return; // Explicit return to ensure no further processing
   }
 };
 
