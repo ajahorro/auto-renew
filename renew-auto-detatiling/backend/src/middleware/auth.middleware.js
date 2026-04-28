@@ -28,26 +28,27 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: String(decoded.id) },
-      select: { id: true, email: true, role: true, isActive: true, archivedAt: true }
-    });
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "User not found. Please login again."
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: String(decoded.id) },
+        select: { id: true, email: true, role: true, isActive: true, archivedAt: true }
       });
-    }
 
-    if (!user.isActive) {
-      return res.status(403).json({
-        success: false,
-        message: "Account is deactivated. Contact admin for support."
-      });
-    }
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "User not found. Please login again."
+        });
+      }
 
-    if (user.archivedAt) {
+      if (!user.isActive) {
+        return res.status(403).json({
+          success: false,
+          message: "Account is deactivated. Contact admin for support."
+        });
+      }
+
+      if (user.archivedAt) {
       return res.status(403).json({
         success: false,
         message: "Account has been archived. Contact admin for support."
@@ -61,6 +62,17 @@ const authenticate = async (req, res, next) => {
     };
 
     next();
+    } catch (userError) {
+      // If User table doesn't exist, return 503 (service unavailable)
+      if (userError?.code === "P2021") {
+        return res.status(503).json({
+          success: false,
+          message: "Service temporarily unavailable. Please try again shortly.",
+          isRetryable: true
+        });
+      }
+      throw userError;
+    }
 
   } catch (error) {
     console.error("AUTH ERROR:", error);

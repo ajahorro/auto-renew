@@ -18,66 +18,67 @@ async function sendBookingReminders() {
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
 
-    // ── Same-day reminders (sent once per booking) ──────────────────
-    const sameDayBookings = await prisma.booking.findMany({
-      where: {
-        appointmentStart: {
-          gte: todayStart,
-          lte: todayEnd
+    try {
+      // ── Same-day reminders (sent once per booking) ──────────────────
+      const sameDayBookings = await prisma.booking.findMany({
+        where: {
+          appointmentStart: {
+            gte: todayStart,
+            lte: todayEnd
+          },
+          status: {
+            in: ["CONFIRMED", "ONGOING"]
+          },
+          sameDayReminderSent: false
         },
-        status: {
-          in: ["CONFIRMED", "ONGOING"]
-        },
-        sameDayReminderSent: false
-      },
-      include: {
-        customer: true
-      }
-    });
-
-    for (const booking of sameDayBookings) {
-      await prisma.$transaction(async (tx) => {
-        await tx.notification.create({
-          data: {
-            userId: booking.customerId,
-            title: "Appointment Today",
-            message: `Reminder: You have an appointment today at ${new Date(booking.appointmentStart).toLocaleTimeString()}.`,
-            type: "BOOKING_REMINDER"
-          }
-        });
-
-        await tx.booking.update({
-          where: { id: booking.id },
-          data: { sameDayReminderSent: true }
-        });
+        include: {
+          customer: true
+        }
       });
-    }
 
-    // ── One-hour reminders (sent once per booking) ───────────────────
-    const oneHourBookings = await prisma.booking.findMany({
-      where: {
-        appointmentStart: {
-          gte: now,
-          lte: oneHourLater
-        },
-        status: {
-          in: ["CONFIRMED"]
-        },
-        oneHourReminderSent: false
-      },
-      include: {
-        customer: true
+      for (const booking of sameDayBookings) {
+        await prisma.$transaction(async (tx) => {
+          await tx.notification.create({
+            data: {
+              userId: booking.customerId,
+              title: "Appointment Today",
+              message: `Reminder: You have an appointment today at ${new Date(booking.appointmentStart).toLocaleTimeString()}.`,
+              type: "BOOKING_REMINDER"
+            }
+          });
+
+          await tx.booking.update({
+            where: { id: booking.id },
+            data: { sameDayReminderSent: true }
+          });
+        });
       }
-    });
 
-    for (const booking of oneHourBookings) {
-      await prisma.$transaction(async (tx) => {
-        await tx.notification.create({
-          data: {
-            userId: booking.customerId,
-            title: "Appointment in 1 Hour",
-            message: `Your appointment starts at ${new Date(booking.appointmentStart).toLocaleTimeString()}.`,
-            type: "BOOKING_REMINDER"
+      // ── One-hour reminders (sent once per booking) ───────────────────
+      const oneHourBookings = await prisma.booking.findMany({
+        where: {
+          appointmentStart: {
+            gte: now,
+            lte: oneHourLater
+          },
+          status: {
+            in: ["CONFIRMED"]
+          },
+          oneHourReminderSent: false
+        },
+        include: {
+          customer: true
+        }
+      });
+
+      for (const booking of oneHourBookings) {
+        await prisma.$transaction(async (tx) => {
+          await tx.notification.create({
+            data: {
+              userId: booking.customerId,
+              title: "Appointment in 1 Hour",
+              message: `Your appointment starts at ${new Date(booking.appointmentStart).toLocaleTimeString()}.`,
+              type: "BOOKING_REMINDER"
           }
         });
 
@@ -92,6 +93,14 @@ async function sendBookingReminders() {
       console.log(
         `[REMINDERS] Sent ${sameDayBookings.length} same-day, ${oneHourBookings.length} one-hour reminders`
       );
+    }
+    } catch (innerError) {
+      // If reminder fields don't exist in database yet, silently skip
+      if (innerError?.code === "P2022" && innerError?.meta?.column?.includes("Reminder")) {
+        console.log("[REMINDERS] Skipping reminders - database schema not yet synced");
+      } else {
+        throw innerError;
+      }
     }
   } catch (error) {
     console.error("Booking reminders error:", error);

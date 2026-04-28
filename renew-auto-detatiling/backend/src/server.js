@@ -9,6 +9,8 @@ const ensureBusinessSettings = require("./config/defaultSettings");
 const normalizeLegacyBookingData = require("./config/normalizeLegacyData");
 const sendBookingReminders = require("./jobs/bookingReminders");
 const syncBookingLifecycleStates = require("./jobs/bookingLifecycle");
+const processStartReminders = require("./jobs/startReminder.job");
+const notificationQueue = require("./services/notificationQueue.service");
 const rateLimiter = require("./middleware/rateLimiter.middleware");
 
 // Routes
@@ -60,6 +62,8 @@ app.post("/api/auth/register/resend-otp", authController.resendRegistrationOtp);
 app.post("/api/auth/login", authController.login);
 app.post("/api/auth/forgot-password", authController.forgotPassword);
 app.post("/api/auth/reset-password", authController.resetPassword);
+app.post("/api/auth/otp-login/initiate", authController.initiateOtpLogin);
+app.post("/api/auth/otp-login/verify", authController.verifyOtpLogin);
 
 /* AUTH ROUTES (PROTECTED) */
 app.post("/api/auth/send-email-otp", authenticate, authController.sendEmailOtp);
@@ -72,7 +76,10 @@ app.get("/api/audit-logs", authenticate, authorize("ADMIN", "SUPER_ADMIN"), asyn
     if (entityType) where.entityType = entityType;
     if (action) where.action = action;
     if (userId) where.userId = userId;
-    if (bookingId) where.bookingId = Number(bookingId);
+    
+    if (bookingId && !isNaN(Number(bookingId))) {
+      where.bookingId = Number(bookingId);
+    }
 
     const logs = await prisma.auditLog.findMany({
       where,
@@ -91,7 +98,7 @@ app.get("/api/audit-logs", authenticate, authorize("ADMIN", "SUPER_ADMIN"), asyn
     res.json({ success: true, logs });
   } catch (error) {
     console.error("GET AUDIT LOGS ERROR:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    res.status(500).json({ success: false, message: "Internal server error", error: error.message });
   }
 });
 
@@ -200,6 +207,17 @@ async function startServer() {
       await syncBookingLifecycleStates();
     });
 
+    // Start reminders (runs every 5 mins)
+    cron.schedule("*/5 * * * *", async () => {
+      console.log("[CRON] Checking for delayed service starts...");
+      await processStartReminders();
+    });
+
+    // Notification Queue processor (runs every minute)
+    cron.schedule("* * * * *", async () => {
+      await notificationQueue.processQueue();
+    });
+
     // 3. Listen
     app.listen(PORT, () => {
       console.log(`\n🚀 RENEW API Server started on port ${PORT}`);
@@ -211,5 +229,14 @@ async function startServer() {
     process.exit(1);
   }
 }
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  const fs = require('fs');
+  const errorMsg = `[${new Date().toISOString()}] ${err.stack}\n`;
+  fs.appendFileSync('error_log.txt', errorMsg);
+  console.error("GLOBAL ERROR:", err);
+  res.status(500).json({ success: false, message: "Internal Server Error", error: err.message, stack: err.stack });
+});
 
 startServer();

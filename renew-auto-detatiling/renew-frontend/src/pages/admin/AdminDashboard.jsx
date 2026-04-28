@@ -60,7 +60,7 @@ const AdminDashboard = () => {
           }
         }
 
-        const bookingsRes = await API.get("/bookings");
+        const bookingsRes = await API.get("/bookings?limit=50");
         const list = Array.isArray(bookingsRes.data) 
           ? bookingsRes.data 
           : (bookingsRes.data.bookings || []);

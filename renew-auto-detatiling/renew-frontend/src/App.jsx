@@ -18,6 +18,7 @@ import AdminPayments from "./pages/admin/AdminPayments";
 import AdminAnalytics from "./pages/admin/AdminAnalytics";
 import AdminAuditLogs from "./pages/admin/AdminAuditLogs";
 import AdminStaffManagement from "./pages/admin/AdminStaffManagement";
+import AdminRefunds from "./pages/admin/AdminRefunds";
 
 /* ================= STAFF ================= */
 import StaffDashboard from "./pages/staff/StaffDashboard";
@@ -152,6 +153,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}>
               <AdminPayments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/refunds"
+          element={
+            <ProtectedRoute allowedRoles={["ADMIN", "SUPER_ADMIN"]}>
+              <AdminRefunds />
             </ProtectedRoute>
           }
         />

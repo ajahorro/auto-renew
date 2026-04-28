@@ -26,7 +26,13 @@ const PaymentStatusBadge = ({ status }) => {
       color: "#64748b",
       textColor: "#fff"
     },
-    // Legacy
+    FAILED: {
+      icon: <AlertCircle size={12} />,
+      label: "Failed",
+      color: "#dc2626",
+      textColor: "#fff"
+    },
+    // Legacy alias kept for backwards compatibility
     PENDING: {
       icon: <Clock size={12} />,
       label: "Unpaid",

@@ -28,7 +28,8 @@ const {
   updateBooking,
   confirmDownpayment,
   requestCancelBooking,
-  processCancellationRequest
+  processCancellationRequest,
+  adminOverride
 } = require("../controllers/bookings.controller");
 
 /* ================= GET ROUTES (ADMIN & UTILITY) ================= */
@@ -41,12 +42,23 @@ router.get("/availability", getAvailability);
 router.get("/addons", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), getAddonRequests);
 
 /* PER-BOOKING AUDIT LOGS - Must be before /:id */
-router.get("/:id/audit-logs", authenticate, authorize("ADMIN", "SUPER_ADMIN"), async (req, res) => {
+router.get("/:id/audit-logs", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF"), async (req, res) => {
   const prisma = require("../config/prisma");
   try {
     const bookingId = parseInt(req.params.id, 10);
     if (isNaN(bookingId)) {
       return res.status(400).json({ success: false, message: "Invalid booking ID" });
+    }
+
+    // Staff security check
+    if (req.user.role === "STAFF") {
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId },
+        select: { assignedStaffId: true }
+      });
+      if (!booking || booking.assignedStaffId !== req.user.id) {
+        return res.status(403).json({ success: false, message: "Unauthorized. You are not assigned to this booking." });
+      }
     }
 
     const logs = await prisma.auditLog.findMany({
@@ -62,8 +74,8 @@ router.get("/:id/audit-logs", authenticate, authorize("ADMIN", "SUPER_ADMIN"), a
 
     res.json({ success: true, logs });
   } catch (error) {
-    console.error("GET AUDIT LOGS ERROR:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    console.error("GET BOOKING AUDIT LOGS ERROR:", error);
+    res.status(500).json({ success: false, message: "Internal server error", error: error.message });
   }
 });
 
@@ -101,6 +113,7 @@ router.post("/:id/cancel-request", authenticate, authorize("CUSTOMER"), requestC
 router.patch("/:id/cancel-request", authenticate, authorize("ADMIN", "SUPER_ADMIN"), processCancellationRequest);
 router.post("/:id/request-cancel", authenticate, authorize("ADMIN", "SUPER_ADMIN"), requestCancelBooking);
 router.patch("/:id/cancel", authenticate, authorize("ADMIN", "SUPER_ADMIN"), cancelBooking); // Direct admin cancel
+router.post("/:id/admin-override", authenticate, authorize("ADMIN", "SUPER_ADMIN"), adminOverride);
 
 // Addon requests
 router.post("/:id/addon", authenticate, authorize("ADMIN", "SUPER_ADMIN", "STAFF", "CUSTOMER"), createAddonRequest);

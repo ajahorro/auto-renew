@@ -1,68 +1,54 @@
 const prisma = require("./prisma");
 
+/**
+ * Normalize any legacy data that may exist in the database.
+ * This runs on server startup and is idempotent.
+ * All queries use the CURRENT valid enum values.
+ */
 async function normalizeLegacyBookingData() {
   const updates = [
     {
-      label: "booking refundStatus",
+      label: "booking refundStatus: legacy NONE -> skip (no longer valid enum value)",
+      // RefundStatus no longer has NONE. Records with invalid values are left as-is.
+      // Handled by force-reset. This is a no-op.
+      query: null
+    },
+    {
+      label: "booking paymentStatus: PENDING -> UNPAID",
+      // PENDING was renamed to UNPAID. This handles any remaining records.
       query: `
         UPDATE "Booking"
-        SET "refundStatus" = 'NONE'::"RefundStatus"
-        WHERE "refundStatus"::text = 'none'
+        SET "paymentStatus" = 'UNPAID'::"PaymentStatus"
+        WHERE "paymentStatus"::text = 'PENDING'
       `
     },
     {
-      label: "booking paymentStatus",
+      label: "service status: IN_PROGRESS sync with ONGOING booking",
+      // If booking is ONGOING, service should be IN_PROGRESS at minimum
       query: `
         UPDATE "Booking"
-        SET "paymentStatus" = 'PENDING'
-        WHERE "paymentStatus"::text IN ('UNPAID', 'unpaid')
-      `
-    },
-    {
-      label: "booking status PENDING → SCHEDULED",
-      query: `
-        UPDATE "Booking"
-        SET "status" = 'SCHEDULED'::"BookingStatus"
-        WHERE "status"::text = 'PENDING'
-        AND "status"::text != 'CANCELLED'
-        AND "status"::text != 'COMPLETED'
-      `
-    },
-    {
-      label: "booking status CONFIRMED → SCHEDULED",
-      query: `
-        UPDATE "Booking"
-        SET "status" = 'SCHEDULED'::"BookingStatus"
-        WHERE "status"::text = 'CONFIRMED'
-        AND "status"::text != 'CANCELLED'
-        AND "status"::text != 'COMPLETED'
-      `
-    },
-    {
-      label: "sync serviceStatus ONGOING",
-      query: `
-        UPDATE "Booking"
-        SET "serviceStatus" = 'ONGOING'::"ServiceStatus"
+        SET "serviceStatus" = 'IN_PROGRESS'::"ServiceStatus"
         WHERE "status"::text = 'ONGOING'
-        AND "serviceStatus" != 'ONGOING'
+        AND "serviceStatus"::text = 'NOT_STARTED'
       `
     },
     {
-      label: "sync serviceStatus COMPLETED",
+      label: "service status: FINISHED sync with COMPLETED booking",
       query: `
         UPDATE "Booking"
-        SET "serviceStatus" = 'COMPLETED'::"ServiceStatus"
+        SET "serviceStatus" = 'FINISHED'::"ServiceStatus"
         WHERE "status"::text = 'COMPLETED'
-        AND "serviceStatus" != 'COMPLETED'
+        AND "serviceStatus"::text != 'FINISHED'
       `
     }
   ];
 
   try {
     for (const update of updates) {
+      if (!update.query) continue;
       const affectedRows = await prisma.$executeRawUnsafe(update.query);
       if (affectedRows > 0) {
-        console.log(`[normalizeLegacyBookingData] Updated ${affectedRows} rows for ${update.label}`);
+        console.log(`[normalizeLegacyBookingData] Updated ${affectedRows} rows for: ${update.label}`);
       }
     }
   } catch (error) {

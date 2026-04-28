@@ -20,8 +20,6 @@ enum BookingStatus {
   ONGOING
   COMPLETED
   CANCELLED
-  SCHEDULED       // legacy
-  PENDING_PAYMENT // legacy
 }
 
 enum CancellationStatus {
@@ -32,37 +30,30 @@ enum CancellationStatus {
 }
 
 enum RefundStatus {
-  NONE
   PENDING
   PROCESSED
-  FORFEITED
+  REJECTED
 }
 
 enum PaymentMethod {
   GCASH
   CASH
-  GCASH_POST_SERVICE
 }
 
 enum PaymentStatus {
   UNPAID
   FOR_VERIFICATION
+  PARTIALLY_PAID
   PAID
+  REJECTED
+  FAILED
   REFUNDED
-  PENDING         // legacy
-  PARTIALLY_PAID  // legacy
-  REJECTED        // legacy
-  APPROVED        // legacy
-  VERIFIED        // legacy
-  COMPLETED       // legacy
 }
 
 enum ServiceStatus {
   NOT_STARTED
   IN_PROGRESS
   FINISHED
-  ONGOING   // legacy
-  COMPLETED // legacy
 }
 
 enum PaymentType {
@@ -117,9 +108,11 @@ model User {
   bookings         Booking[]       @relation("CustomerBookings")
   assignedBookings Booking[]    @relation("StaffAssignedBookings")
   notifications   Notification[]
+  notificationQueue NotificationQueue[]
   cancellationRequests CancellationRequest[]
   communicationLogs CommunicationLog[]
   auditLogs        AuditLog[]
+  processedRefunds Refund[]       @relation("RefundProcessor")
 
   // OTP for registration
   otpVerification OtpVerification?
@@ -214,18 +207,18 @@ model Booking {
 
   status BookingStatus @default(PENDING)
   cancellationStatus CancellationStatus @default(NONE)
-  refundStatus RefundStatus @default(NONE)
   paymentStatus PaymentStatus @default(UNPAID)
   serviceStatus ServiceStatus @default(NOT_STARTED)
+  refundStatus RefundStatus @default(PENDING)
+  
   auditLogs    AuditLog[]
 
   totalAmount    Decimal @db.Decimal(10, 2)
   amountPaid    Decimal @default(0.00) @db.Decimal(10, 2)
   incurredCost  Decimal @default(0.00) @db.Decimal(10, 2)
   refundAmount  Decimal @default(0.00) @db.Decimal(10, 2)
-
   equipmentDeployed Boolean @default(false)
-  equipmentCost    Decimal @default(0.00) @db.Decimal(10, 2)
+  equipmentCost Decimal @default(0.00) @db.Decimal(10, 2)
 
   paymentMethod PaymentMethod @default(CASH)
 
@@ -250,15 +243,29 @@ model Booking {
   downpaymentRequested Boolean @default(false)
   downpaymentAmount Decimal? @db.Decimal(10, 2)
   isDownpaymentRequired Boolean @default(false)
+
   isLocked Boolean @default(false)
+
   sameDayReminderSent Boolean @default(false)
   oneHourReminderSent Boolean @default(false)
+  startReminderSent Boolean @default(false)
+
+  paymentDeadlineAt DateTime?
+
+  archivedAt DateTime?
+  archiveReason String?
+
+  adminOverrideReason String?
+  adminOverrideBy String?
+  adminOverrideAt DateTime?
+  overrideUsed     Boolean   @default(false)
 
   customer       User         @relation("CustomerBookings", fields: [customerId], references: [id], onDelete: Cascade)
   assignedStaff User?        @relation("StaffAssignedBookings", fields: [assignedStaffId], references: [id], onDelete: SetNull)
 
   items                 BookingItem[]
   payments             Payment[]
+  refunds              Refund[]
   cancellationRequests CancellationRequest[]
   communicationLogs   CommunicationLog[]
   addonRequests        AddonRequest[]
@@ -267,7 +274,7 @@ model Booking {
   @@index([status])
   @@index([appointmentStart])
   @@index([assignedStaffId])
-  @@index([cancellationStatus])
+  @@index([createdAt])
 }
 
 // ============================================
@@ -307,7 +314,7 @@ model Payment {
 
   amount     Decimal @db.Decimal(10, 2)
   method     PaymentMethod @default(CASH)
-  status     PaymentStatus @default(PENDING)
+  status     PaymentStatus @default(UNPAID)
   paymentType PaymentType @default(FULL)
   createdBy  PaymentCreatedBy @default(CUSTOMER)
 
@@ -320,6 +327,8 @@ model Payment {
   verifiedAt      DateTime?
   rejectionReason String?
 
+  ocrResult       OcrResult?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -328,6 +337,53 @@ model Payment {
   @@index([bookingId])
   @@index([status])
   @@index([method])
+}
+
+// ============================================
+// OCR RESULT MODEL
+// ============================================
+
+model OcrResult {
+  id              String   @id @default(cuid())
+  paymentId       Int      @unique
+  extractedAmount Decimal? @db.Decimal(10, 2)
+  referenceNumber String?
+  extractedDate   DateTime?
+  confidence      Float?
+  rawText         String?
+  
+  isMatch         Boolean?
+  status          String?  // MATCH or MISMATCH
+  mismatchDetails String?
+  
+  createdAt       DateTime @default(now())
+
+  payment         Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// REFUND MODEL
+// ============================================
+
+model Refund {
+  id        String   @id @default(cuid())
+  bookingId Int      @unique
+  amount    Decimal  @db.Decimal(10, 2)
+  status    RefundStatus @default(PENDING)
+  reason    String?
+  totalPaid    Decimal? @db.Decimal(10, 2)
+  incurredCost Decimal? @db.Decimal(10, 2)
+  
+  processedById String?
+  processedAt   DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  booking     Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  processedBy User?   @relation("RefundProcessor", fields: [processedById], references: [id])
+
+  @@index([status])
 }
 
 // ============================================
@@ -427,6 +483,36 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+}
+
+// ============================================
+// NOTIFICATION QUEUE MODEL
+// ============================================
+
+model NotificationQueue {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  type      String
+  channels  String[] // e.g. ["EMAIL", "SMS"]
+  status    String   @default("PENDING") // PENDING, SENT, FAILED
+  attempts  Int      @default(0)
+  lastError String?
+  nextRetry DateTime?
+  
+  metadata  Json?
+
+  // DB-enforced idempotency — unique per event
+  idempotencyKey String? @unique
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([nextRetry])
 }
 
 // ============================================

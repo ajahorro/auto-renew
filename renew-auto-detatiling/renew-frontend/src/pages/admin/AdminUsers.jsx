@@ -1,9 +1,34 @@
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import API from "../../api/axios";
 import "../../App.css";
 
 const AdminUsers = () => {
 
   const navigate = useNavigate();
+
+  // Refund summary — values from backend directly, no frontend computation
+  const [pendingCount, setPendingCount] = useState(null);
+  const [pendingTotal, setPendingTotal] = useState(null);
+  const [refundLoading, setRefundLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await API.get("/refunds/pending");
+        setPendingCount(res.data.pendingCount);
+        setPendingTotal(res.data.pendingTotal);
+      } catch {
+        setPendingCount(null);
+        setPendingTotal(null);
+      } finally {
+        setRefundLoading(false);
+      }
+    };
+    load();
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
 
@@ -76,6 +101,42 @@ const AdminUsers = () => {
 
           </ul>
 
+        </div>
+
+        {/* Refund Summary Panel — render-only, backend-provided values */}
+        <div className="card" style={{marginTop:"20px", borderLeft: "4px solid #f59e0b"}}>
+          <h3 style={{marginBottom: "12px", fontSize: "16px", fontWeight: 700}}>
+            Pending Refunds
+          </h3>
+          {refundLoading ? (
+            <p style={{color: "var(--text-secondary)", fontSize: "13px"}}>Loading...</p>
+          ) : (
+            <>
+              <p style={{fontSize: "14px", marginBottom: "6px"}}>
+                Pending Count: <strong>{pendingCount != null ? pendingCount : "—"}</strong>
+              </p>
+              {pendingTotal != null && (
+                <p style={{fontSize: "14px", marginBottom: "12px"}}>
+                  Estimated Total: <strong>₱{Number(pendingTotal).toLocaleString()}</strong>
+                </p>
+              )}
+              <button
+                onClick={() => navigate("/admin/refunds")}
+                style={{
+                  padding: "8px 16px",
+                  background: "var(--accent-blue)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 600
+                }}
+              >
+                View Refunds →
+              </button>
+            </>
+          )}
         </div>
 
       </div>
