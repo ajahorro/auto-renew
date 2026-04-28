@@ -120,6 +120,7 @@ model User {
   @@index([email])
   @@index([role])
   @@index([isActive])
+  @@index([fullName])
 }
 
 // ============================================
@@ -275,6 +276,11 @@ model Booking {
   @@index([appointmentStart])
   @@index([assignedStaffId])
   @@index([createdAt])
+  @@index([paymentStatus])
+  @@index([serviceStatus])
+  @@index([plateNumber])
+  @@index([vehicleBrand])
+  @@index([vehicleModel])
 }
 
 // ============================================

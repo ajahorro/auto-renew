@@ -32,6 +32,7 @@ const AdminBookings = () => {
       if (searchParams.get("serviceStatus")) params.append("serviceStatus", searchParams.get("serviceStatus"));
       if (searchParams.get("paymentStatus")) params.append("paymentStatus", searchParams.get("paymentStatus"));
       if (searchTerm) params.append("searchTerm", searchTerm);
+      params.append("includeTotal", "false");
       
       const url = `/bookings/admin?${params.toString()}`;
       const res = await API.get(url);

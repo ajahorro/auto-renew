@@ -1,7 +1,6 @@
 const jwt = require("jsonwebtoken");
-const prisma = require("../config/prisma");
 
-/* AUTHENTICATION MIDDLEWARE */
+/* AUTHENTICATION MIDDLEWARE (OPTIMIZED) */
 const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -19,81 +18,52 @@ const authenticate = async (req, res, next) => {
       throw new Error("JWT_SECRET is not defined in your .env file");
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    if (!decoded || !decoded.id) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid token. Please login again.",
-      });
-    }
+    let decoded;
 
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: String(decoded.id) },
-        select: { id: true, email: true, role: true, isActive: true, archivedAt: true }
-      });
-
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: "User not found. Please login again."
-        });
-      }
-
-      if (!user.isActive) {
-        return res.status(403).json({
-          success: false,
-          message: "Account is deactivated. Contact admin for support."
-        });
-      }
-
-      if (user.archivedAt) {
-      return res.status(403).json({
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      return res.status(401).json({
         success: false,
-        message: "Account has been archived. Contact admin for support."
+        message: "Invalid or expired token.",
       });
     }
 
+    if (!decoded?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token payload.",
+      });
+    }
+
+    // ⚡ NO DATABASE CALL HERE (IMPORTANT)
     req.user = {
       id: String(decoded.id),
-      email: decoded.email,
-      role: decoded.role ? String(decoded.role).toUpperCase() : "CUSTOMER"
+      email: decoded.email || null,
+      role: decoded.role ? String(decoded.role).toUpperCase() : "CUSTOMER",
     };
 
     next();
-    } catch (userError) {
-      // If User table doesn't exist, return 503 (service unavailable)
-      if (userError?.code === "P2021") {
-        return res.status(503).json({
-          success: false,
-          message: "Service temporarily unavailable. Please try again shortly.",
-          isRetryable: true
-        });
-      }
-      throw userError;
-    }
-
   } catch (error) {
     console.error("AUTH ERROR:", error);
-    
-    // Check if it's a database connection error (Prisma P2024 or similar)
-    const isDbError = error.code?.startsWith('P2') || error.message?.includes('connection') || error.message?.includes('timeout');
-    
+
+    const isDbError =
+      error.code?.startsWith("P2") ||
+      error.message?.includes("connection") ||
+      error.message?.includes("timeout");
+
     if (isDbError) {
       return res.status(503).json({
         success: false,
         message: "Database busy, please try again in a moment.",
-        isRetryable: true
+        isRetryable: true,
       });
     }
 
-    // For JWT errors or any other auth errors, return 401
-    res.status(401).json({
+    return res.status(401).json({
       success: false,
       message: "Session expired or invalid.",
     });
-    return; // Explicit return to ensure no further processing
   }
 };
 

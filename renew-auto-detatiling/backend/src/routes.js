@@ -11,8 +11,7 @@ const authorize = require("./middleware/rbac.middleware");
 PRISMA (AVAILABLE FOR ROUTES IF NEEDED)
 =============================== */
 
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("./config/prisma");
 
 /* ===============================
 ROUTES IMPORT

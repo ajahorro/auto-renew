@@ -1,5 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+
+Invalid `prisma.notificationQue
 
 async function test() {
   try {

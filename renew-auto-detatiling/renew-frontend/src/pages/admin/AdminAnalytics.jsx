@@ -27,7 +27,7 @@ const AdminAnalytics = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await API.get("/bookings/admin-analytics");
+      const res = await API.get(`/bookings/admin-analytics?range=${dateRange}`);
       if (res.data.success) {
         setAnalytics(res.data.analytics);
       } else {

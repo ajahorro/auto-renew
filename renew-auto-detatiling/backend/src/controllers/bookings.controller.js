@@ -1,5 +1,6 @@
 
 const prisma = require("../config/prisma");
+const { Prisma } = require("@prisma/client");
 const LOG_REQUEST = require("../utils/logRequest");
 const statusEngine = require("../services/statusEngine.service");
 const paymentService = require("../services/payment.service");
@@ -1282,6 +1283,22 @@ const getAdminAnalytics = async (req, res) => {
     startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const range = String(req.query.range || "month").toLowerCase();
+    const rangeStart = range === "today"
+      ? startOfToday
+      : range === "week"
+        ? startOfWeek
+        : range === "month"
+          ? startOfMonth
+          : null;
+
+    const bookingRangeWhere = rangeStart
+      ? { appointmentStart: { gte: rangeStart } }
+      : {};
+    const paymentRangeWhere = rangeStart
+      ? { createdAt: { gte: rangeStart } }
+      : {};
+
     // 1. Basic Counts (Parallelized)
     const [
       totalCount,
@@ -1292,18 +1309,21 @@ const getAdminAnalytics = async (req, res) => {
       weekCount,
       monthCount
     ] = await Promise.all([
-      prisma.booking.count(),
+      prisma.booking.count({ where: bookingRangeWhere }),
       prisma.booking.groupBy({
         by: ['status'],
-        _count: true
+        _count: true,
+        where: bookingRangeWhere
       }),
       prisma.booking.groupBy({
         by: ['serviceStatus'],
-        _count: true
+        _count: true,
+        where: bookingRangeWhere
       }),
       prisma.booking.groupBy({
         by: ['paymentStatus'],
-        _count: true
+        _count: true,
+        where: bookingRangeWhere
       }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfToday } } }),
       prisma.booking.count({ where: { appointmentStart: { gte: startOfWeek } } }),
@@ -1335,16 +1355,19 @@ const getAdminAnalytics = async (req, res) => {
       monthRevenueData
     ] = await Promise.all([
       prisma.payment.aggregate({
-        where: { status: "PAID" },
+        where: { status: "PAID", ...paymentRangeWhere },
         _sum: { amount: true }
       }),
       prisma.payment.groupBy({
-        where: { status: "PAID" },
+        where: { status: "PAID", ...paymentRangeWhere },
         by: ['method'],
         _sum: { amount: true }
       }),
       prisma.booking.aggregate({
-        where: { status: { notIn: ["CANCELLED", "COMPLETED"] } },
+        where: {
+          status: { notIn: ["CANCELLED", "COMPLETED"] },
+          ...bookingRangeWhere
+        },
         _sum: { totalAmount: true, amountPaid: true }
       }),
       prisma.payment.aggregate({
@@ -1377,7 +1400,12 @@ const getAdminAnalytics = async (req, res) => {
       prisma.bookingItem.groupBy({
         by: ['serviceNameAtBooking'],
         _count: { id: true },
-        where: { booking: { status: { not: "CANCELLED" } } }
+        where: {
+          booking: {
+            status: { not: "CANCELLED" },
+            ...(rangeStart ? { appointmentStart: { gte: rangeStart } } : {})
+          }
+        }
       }),
       // Revenue per service: aggregate paid payments grouped by service name
       prisma.$queryRaw`
@@ -1387,6 +1415,7 @@ const getAdminAnalytics = async (req, res) => {
         JOIN "Booking" b ON bi."bookingId" = b.id
         LEFT JOIN "Payment" p ON p."bookingId" = b.id AND p.status::text = 'PAID'
         WHERE b.status::text != 'CANCELLED'
+          ${rangeStart ? Prisma.sql`AND b."appointmentStart" >= ${rangeStart}` : Prisma.empty}
         GROUP BY bi."serviceNameAtBooking"
         ORDER BY revenue DESC
       `,
@@ -1396,6 +1425,7 @@ const getAdminAnalytics = async (req, res) => {
                COUNT(*)::int AS count
         FROM "Booking"
         WHERE status::text != 'CANCELLED' AND "appointmentStart" IS NOT NULL
+          ${rangeStart ? Prisma.sql`AND "appointmentStart" >= ${rangeStart}` : Prisma.empty}
         GROUP BY hour
         ORDER BY count DESC
         LIMIT 5
@@ -1418,24 +1448,25 @@ const getAdminAnalytics = async (req, res) => {
         label: `${row.hour}:00`
       }));
 
-    const monthDistribution = await prisma.booking.findMany({
-      where: { 
-        appointmentStart: { gte: startOfMonth },
-        status: { not: "CANCELLED" }
-      },
-      select: { appointmentStart: true }
-    });
+    const distributionStart = rangeStart || startOfMonth;
+    const monthDistribution = await prisma.$queryRaw`
+      SELECT EXTRACT(DAY FROM "appointmentStart")::int AS day,
+             COUNT(*)::int AS count
+      FROM "Booking"
+      WHERE "appointmentStart" IS NOT NULL
+        AND "appointmentStart" >= ${distributionStart}
+        AND status::text != 'CANCELLED'
+      GROUP BY day
+    `;
 
     const bookingsPerDay = {};
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     for (let i = 1; i <= daysInMonth; i++) {
       bookingsPerDay[i] = 0;
     }
-    monthDistribution.forEach(booking => {
-      if (booking.appointmentStart) {
-        const date = new Date(booking.appointmentStart);
-        const day = date.getDate();
-        bookingsPerDay[day] = (bookingsPerDay[day] || 0) + 1;
+    (monthDistribution || []).forEach((row) => {
+      if (row.day) {
+        bookingsPerDay[row.day] = Number(row.count || 0);
       }
     });
 
@@ -1448,39 +1479,35 @@ const getAdminAnalytics = async (req, res) => {
       ? Number(((counts.booking.CANCELLED / totalCount) * 100).toFixed(1)) 
       : 0;
 
-    const staffBookings = await prisma.booking.groupBy({
-      by: ["assignedStaffId"],
-      where: { assignedStaffId: { not: null } },
-      _count: { id: true }
-    });
+    const staffTotals = await prisma.$queryRaw`
+      SELECT b."assignedStaffId" AS "staffId",
+             COUNT(*)::int AS total,
+             SUM(CASE WHEN b.status::text = 'COMPLETED' THEN 1 ELSE 0 END)::int AS completed
+      FROM "Booking" b
+      WHERE b."assignedStaffId" IS NOT NULL
+        ${rangeStart ? Prisma.sql`AND b."appointmentStart" >= ${rangeStart}` : Prisma.empty}
+      GROUP BY b."assignedStaffId"
+    `;
 
-    const [staffDetails, staffCompletedCounts] = await Promise.all([
-      prisma.user.findMany({
-        where: { id: { in: staffBookings.map(sb => sb.assignedStaffId) } },
-        select: { id: true, fullName: true }
-      }),
-      prisma.booking.groupBy({
-        by: ["assignedStaffId"],
-        where: { 
-          assignedStaffId: { in: staffBookings.map(sb => sb.assignedStaffId) },
-          status: "COMPLETED"
-        },
-        _count: { id: true }
-      })
-    ]);
+    const staffIds = (staffTotals || []).map((row) => row.staffId);
+    const staffDetails = staffIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: staffIds } },
+          select: { id: true, fullName: true }
+        })
+      : [];
 
     const staffMap = {};
-    staffDetails.forEach(s => staffMap[s.id] = s.fullName);
-    
-    const completedMap = {};
-    staffCompletedCounts.forEach(sc => completedMap[sc.assignedStaffId] = sc._count.id);
+    staffDetails.forEach((staff) => {
+      staffMap[staff.id] = staff.fullName;
+    });
 
-    const staffWithNames = staffBookings.map(sb => {
-      const total = sb._count.id;
-      const completed = completedMap[sb.assignedStaffId] || 0;
+    const staffWithNames = (staffTotals || []).map((row) => {
+      const total = Number(row.total || 0);
+      const completed = Number(row.completed || 0);
       return {
-        id: sb.assignedStaffId,
-        name: staffMap[sb.assignedStaffId] || "Unknown",
+        id: row.staffId,
+        name: staffMap[row.staffId] || "Unknown",
         totalBookings: total,
         completedBookings: completed,
         completionRate: total > 0 ? Number(((completed / total) * 100).toFixed(1)) : 0
@@ -2788,124 +2815,86 @@ const processCancellationRequest = async (req, res) => {
 
 const getAdminBookings = async (req, res) => {
   try {
-    LOG_REQUEST(req, "GET_ADMIN_BOOKINGS");
-    const _queryStart = Date.now();
+    let {
+      status,
+      paymentStatus,
+      serviceStatus,
+      search = "",
+      searchTerm = "",
+      includeTotal = "true",
+      page = 1,
+      limit = 20
+    } = req.query;
 
-    if (!req.user?.id) {
-      return res.status(401).json({ success: false, message: "Authentication required" });
+    page = Math.max(1, Number(page) || 1);
+    limit = Math.min(50, Math.max(1, Number(limit) || 20));
+    const shouldCount = String(includeTotal).toLowerCase() !== "false";
+
+    const where = {};
+
+    if (status) where.status = String(status).toUpperCase();
+    if (paymentStatus) where.paymentStatus = String(paymentStatus).toUpperCase();
+    if (serviceStatus) where.serviceStatus = String(serviceStatus).toUpperCase();
+
+    const rawSearch = String(searchTerm || search).trim();
+    const numericSearch = rawSearch && /^[0-9]+$/.test(rawSearch) ? Number(rawSearch) : null;
+    const textSearch = rawSearch.length >= 2 ? rawSearch : "";
+
+    if (numericSearch !== null || textSearch) {
+      where.OR = [
+        numericSearch !== null ? { id: numericSearch } : null,
+        textSearch ? { customer: { fullName: { contains: textSearch, mode: "insensitive" } } } : null,
+        textSearch ? { customer: { email: { contains: textSearch, mode: "insensitive" } } } : null,
+        textSearch ? { plateNumber: { contains: textSearch, mode: "insensitive" } } : null,
+        textSearch ? { vehicleBrand: { contains: textSearch, mode: "insensitive" } } : null,
+        textSearch ? { vehicleModel: { contains: textSearch, mode: "insensitive" } } : null
+      ].filter(Boolean);
     }
 
-    let { status, serviceStatus, paymentStatus, searchTerm, page = 1, limit = 20 } = req.query;
-    page = Math.max(1, parseInt(page) || 1);
-    limit = Math.min(50, Math.max(1, parseInt(limit) || 20));
-    const skip = (page - 1) * limit;
-
-    let where = {};
-    
-    // Exact enum matching
-    if (status) where.status = status.toUpperCase();
-    if (serviceStatus) where.serviceStatus = serviceStatus.toUpperCase();
-    if (paymentStatus) where.paymentStatus = paymentStatus.toUpperCase();
-
-    // Global Search
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      const statusMatches = Object.keys(STATUS).filter(s => s.toLowerCase().includes(searchLower));
-      const serviceMatches = Object.keys(SERVICE_STATUS).filter(s => s.toLowerCase().includes(searchLower));
-      const paymentMatches = Object.keys(PAYMENT_STATUS).filter(s => s.toLowerCase().includes(searchLower));
-
-      where.AND = [
-        ...(where.status ? [{ status: where.status }] : []),
-        ...(where.serviceStatus ? [{ serviceStatus: where.serviceStatus }] : []),
-        ...(where.paymentStatus ? [{ paymentStatus: where.paymentStatus }] : []),
-        {
-          OR: [
-            { id: !isNaN(parseInt(searchTerm)) ? parseInt(searchTerm) : undefined },
-            { customer: { fullName: { contains: searchLower, mode: 'insensitive' } } },
-            { customer: { email: { contains: searchLower, mode: 'insensitive' } } },
-            { vehicleType: { contains: searchLower, mode: 'insensitive' } },
-            { plateNumber: { contains: searchLower, mode: 'insensitive' } },
-            { vehicleBrand: { contains: searchLower, mode: 'insensitive' } },
-            { vehicleModel: { contains: searchLower, mode: 'insensitive' } },
-            { status: { in: statusMatches } },
-            { serviceStatus: { in: serviceMatches } },
-            { paymentStatus: { in: paymentMatches } }
-          ].filter(condition => condition.id !== undefined || condition.customer || condition.vehicleType || condition.plateNumber || condition.vehicleBrand || condition.vehicleModel || (condition.status && condition.status.in.length > 0) || (condition.serviceStatus && condition.serviceStatus.in.length > 0) || (condition.paymentStatus && condition.paymentStatus.in.length > 0))
-        }
-      ];
-      
-      // Clean up top-level where to avoid redundancy with AND
-      delete where.status;
-      delete where.serviceStatus;
-      delete where.paymentStatus;
-    }
-
-    const [totalCount, bookings] = await Promise.all([
-      prisma.booking.count({ where }),
+    const [rows, total] = await Promise.all([
       prisma.booking.findMany({
         where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: {
+          appointmentStart: "desc"
+        },
         select: {
           id: true,
-          status: true,
+          totalAmount: true,
           paymentStatus: true,
           serviceStatus: true,
-          totalAmount: true,
-          amountPaid: true,
           appointmentStart: true,
-          appointmentEnd: true,
           vehicleType: true,
           plateNumber: true,
-          vehicleBrand: true,
-          vehicleModel: true,
-          createdAt: true,
-          customer: { select: { id: true, fullName: true, email: true, phone: true } },
-          assignedStaff: { select: { id: true, fullName: true } },
-          items: { select: { serviceNameAtBooking: true, priceAtBooking: true } },
-          payments: { select: { amount: true, status: true } }
-        },
-        orderBy: { appointmentStart: "desc" },
-        skip,
-        take: limit
-      })
+
+          customer: {
+            select: {
+              fullName: true,
+              phone: true
+            }
+          }
+        }
+      }),
+      shouldCount ? prisma.booking.count({ where }) : Promise.resolve(null)
     ]);
 
-    const sanitizedBookings = bookings.map((booking) => {
-      const totalPaid = (booking.payments || []).reduce((sum, p) => {
-        if (p.status === "PAID" || p.status === "APPROVED" || p.status === "VERIFIED" || p.status === "COMPLETED") {
-          return sum + Number(p.amount || 0);
-        }
-        return sum;
-      }, 0);
-      const { payments, ...rest } = booking;
-      return {
-        ...rest,
-        totalAmount: Number(booking.totalAmount || 0),
-        amountPaid: Number(booking.amountPaid || 0),
-        totalPaid,
-        items: (booking.items || []).map((item) => ({
-          ...item,
-          priceAtBooking: Number(item.priceAtBooking || 0),
-        }))
-      };
-    });
+    const resolvedTotal = shouldCount ? total : rows.length;
 
-    res.json({ 
-      success: true, 
-      bookings: sanitizedBookings,
+    res.json({
+      success: true,
+      bookings: rows,
       pagination: {
-        total: totalCount,
         page,
         limit,
-        totalPages: Math.ceil(totalCount / limit)
+        total: resolvedTotal,
+        pages: resolvedTotal ? Math.ceil(resolvedTotal / limit) : 0
       }
     });
-    console.log(`[PERF] getAdminBookings took: ${Date.now() - _queryStart}ms (${sanitizedBookings.length} results)`);
-  } catch (error) {
-    console.error("GET_ADMIN_BOOKINGS ERROR:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch admin bookings",
-    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
   }
 };
 
